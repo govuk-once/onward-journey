@@ -13,29 +13,20 @@ After installing `mise`, you should run `mise activate` from the root of this re
 
 ### Configure an AWS profile
 
-Currently, we set up the infrastructure in the Made Tech sandbox AWS account until we have our AWS account (in progress)
-
-Add the [mt-playground profile from the Made Tech handbook](https://github.com/madetech/handbook/blob/main/guides/cloud/aws_sandbox.md#cli-usage) and set up an `sso-session` for it by adding the following to your `~/.aws/config`:
-
-```
-[sso-session mt-playground]
-sso_start_url = https://madetech.awsapps.com/start
-sso_region = eu-west-2
-sso_registration_scopes = sso:account:access
-```
+Set up a `profile` and `sso-session` for the AWS account you will be setting up the infrastructure with. See the [aws cli documentation](https://awscli.amazonaws.com/v2/documentation/api/2.8.7/reference/configure/sso.html) for reference
 
 Then, set the `AWS_PROFILE` environment variable to use this AWS profile for deploying the infrastructure in a .env file:
 
 ```shell
-echo 'AWS_PROFILE = "mt-playground"' >> .env
+echo 'AWS_PROFILE = "<profile-name>"' >> .env
 ```
 
 ## Deploying infrastructure
 
 Before you deploy infrastructure, you will need to make sure you are authenticated with AWS:
 
-``shell
-aws sso login --profile mt-platground
+```shell
+aws sso login --profile <profile-name>
 ```
 
 ### Bootstrap
