@@ -32,6 +32,12 @@ echo 'AWS_PROFILE = "mt-playground"' >> .env
 
 ## Deploying infrastructure
 
+Before you deploy infrastructure, you will need to make sure you are authenticated with AWS:
+
+``shell
+aws sso login --profile mt-platground
+```
+
 ### Bootstrap
 
 There is an `infrastructure/bootstrap` directory for managing the remote state in S3
