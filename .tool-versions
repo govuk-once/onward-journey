@@ -1,0 +1,3 @@
+# List of tool versions used in this project
+# Compatible with mise-en-place or asdf for easy installation and management
+opentofu 1.10
