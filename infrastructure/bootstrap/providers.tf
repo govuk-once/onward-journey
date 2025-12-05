@@ -9,7 +9,6 @@ terraform {
 
 provider "aws" {
   region = "eu-west-2"
-  profile = "made-tech-sandbox"
 
   default_tags {
     tags = {
