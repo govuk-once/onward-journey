@@ -45,6 +45,11 @@ tofu workspace list
 tofu workspace create foo
 ```
 
+To initialise the tofu directory before deploying:
+```shell
+tofu init
+```
+
 To view what changes your tofu code will make:
 ```shell
 tofu plan
