@@ -8,10 +8,9 @@ terraform {
 
   backend "s3" {
     region = "eu-west-2"
-    profile = "made-tech-sandbox"
 
     bucket = "onward-journey-infrastructure-state"
-    key = "state/workspace/${terraform.workspace}/application.tfstate"
+    key = "application.tfstate"
     
     use_lockfile = true
   }
@@ -19,7 +18,6 @@ terraform {
 
 provider "aws" {
   region = "eu-west-2"
-  profile = "made-tech-sandbox"
 
   default_tags {
     tags = {
