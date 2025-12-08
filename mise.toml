@@ -1,3 +1,0 @@
-[env]
-AWS_PROFILE = { required = "Set the AWS_PROFILE environment variable to a profile listed in `aws configure list-profiles` with permissions to create the infrastructure" }
-_.file = '.env'
