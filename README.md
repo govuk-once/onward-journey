@@ -11,23 +11,13 @@ This project uses [mise-en-place](https://mise.jdx.dev/getting-started.html) to 
 
 After installing `mise`, you should run `mise activate` from the root of this repo or [set up your shell to automatically active mise on startup](https://mise.jdx.dev/getting-started.html#activate-mise)
 
-### Configure an AWS profile
-
-Set up a `profile` and `sso-session` for the AWS account you will be setting up the infrastructure with. See the [aws cli documentation](https://awscli.amazonaws.com/v2/documentation/api/2.8.7/reference/configure/sso.html) for reference
-
-Then, set the `AWS_PROFILE` environment variable to use this AWS profile for deploying the infrastructure in a .env file:
-
-```shell
-echo 'AWS_PROFILE = "<profile-name>"' >> .env
-```
+You should also install all the tools from the [laptop-configuration repo](https://github.com/govuk-once/laptop-configuration)
 
 ## Deploying infrastructure
 
-Before you deploy infrastructure, you will need to make sure you are authenticated with AWS:
+You need to have the gds cli installed and configured to be able to deploy infrastructure, to the point that `gds aws once-onwardjourney-development-readonly -- echo "test"` succeeds
 
-```shell
-aws sso login --profile <profile-name>
-```
+We use the gds cli to assume roles on our development machines, for a list of relevant roles see `gds aws | grep onwardjourney`. You use one of these roles when working with terraform by running e.g. `gds aws <role-name> -- terraform plan`, or you can run `gds aws <role-name> -- $SHELL` to start a new shell session authenticated as the relevant role.
 
 ### Bootstrap
 
