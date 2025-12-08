@@ -35,32 +35,32 @@ There is an `infrastructure/bootstrap` directory for managing the remote state i
 
 ### Application
 
-To deploy changes to the Onward Journey application and services, you can use the tofu code in `infrastructure/application` and then `tofu plan` and `tofu apply` it
+To deploy changes to the Onward Journey application and services, you can use the terraform code in `infrastructure/application` and then `terraform plan` and `terraform apply` it
 
 You can switch workspaces to deploy an entirely different instance, for example to test changes in an isolated environment without affecting the default workspace:
 ```shell
 # View existing and selected workspace
-tofu workspace list
+terraform workspace list
 # Create a new workspace
-tofu workspace create foo
+terraform workspace create foo
 ```
 
-To initialise the tofu directory before deploying:
+To initialise the terraform directory before deploying:
 ```shell
-tofu init
+terraform init
 ```
 
-To view what changes your tofu code will make:
+To view what changes your terraform code will make:
 ```shell
-tofu plan
+terraform plan
 ```
 
 If you are happy with these changes:
 ```shell
-tofu apply
+terraform apply
 ```
 
 To destroy an environment:
 ```shell
-tofu destroy
+terraform destroy
 ```
