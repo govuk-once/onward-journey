@@ -13,14 +13,8 @@ terraform {
     }
   }
 
-  backend "s3" {
-    region = "eu-west-2"
-
-    bucket = var.tfstate_bucket_name
-    key = "application.tfstate"
-    
-    use_lockfile = true
-  }
+  # Configured per-environment in environments/<environment name>.config
+  backend "s3" {}
 }
 
 provider "aws" {
