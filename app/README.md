@@ -1,8 +1,8 @@
 # Onward Journey Agent System
 
-This project demonstrates a specialized RAG (Retrieval-Augmented Generation) agent built using the **Gemini API** that takes over a conversation (**handoff**) from a general chatbot to provide a more focused and data-driven response using custom data and specialized tools.
+This project demonstrates a specialized RAG (Retrieval-Augmented Generation) agent built using Amazon Bedrock and the boto3 SDK. The agent is designed to take over a conversation (handoff) from a general chatbot to provide a focused, data-driven response using custom data and specialized tools (function calling).
 
-The system utilizes **Sentence Transformers** for generating embeddings and **Cosine Similarity** for data retrieval, enhancing the LLM's knowledge base.
+The system uses local sentence transformers for generating embeddings and cosine similarity for data retrieval, enhancing the LLM's knowledge base before delegating the final generation to a Bedrock model (Claude Sonnet 3.7).
 
 ---
 
@@ -25,9 +25,9 @@ Follow these steps to set up and run the project locally.
 
 ### 1. Prerequisites
 
-Make sure you have the repository pre-requisites from [the root README](../README.MD) installed.
-
-You will need a Gemini API key from [Google AI Studio](https://aistudio.google.com/app/api-keys) to run this code
+* Make sure you have the repository pre-requisites from [the root README](../README.MD) installed.
+* **AWS Account** with configured **IAM credentials** (via CLI or environment variables).
+* Model Access Granted for the desired Claude model (e.g., Claude 3.5 Sonnet) in your target AWS region.
 
 ### 2. Data Preparation
 
@@ -37,7 +37,7 @@ Create a file named mock_rag_data.csv (or similar) in your project directory.
 
 Ensure it contains the columns expected by the df_to_text_chunks function in data.py: `uid`, `service_name`, `department`, `phone_number`, `topic`, `user_type`, `tags`, `url`, `last_update`, and `description`.
 
-Example `mock_rag_data.csv` Structure:
+Example `mock` Structure:
 
 ```bash
 uid,service_name,department,phone_number,topic,user_type,tags,url,last_update,description
@@ -46,65 +46,58 @@ uid,service_name,department,phone_number,topic,user_type,tags,url,last_update,de
 # Add more rows of relevant data...
 ```
 
-### 3. How to Run the Agent
+### 3. Run the Agent
 
-Execute the `main.py` script from your terminal:
-```bash
-uv run main.py
-```
+You can view all configuration options and a description of each by passing the `--help` flag:
 
-You can view configuration options by passing the `--help` flag
 ```shell
-❯ uv run main.py --help
-usage: main.py [-h] --kb_path KB_PATH [--test_data TEST_DATA] [--region REGION] {interactive,test}
-
-Run the Onward Journey Agent in interactive or testing mode using AWS Bedrock.
-
-positional arguments:
-  {interactive,test}    The run mode: "interactive" for chat, or "test" for mass testing.
-
-options:
-  -h, --help            show this help message and exit
-  --kb_path KB_PATH     Path to the knowledge base (e.g., CSV file) for RAG chunks.
-  --test_data TEST_DATA
-                        Path to the JSON file containing test queries and expected answers (required for "test" mode).
+uv run main.py --help
 ```
 
-**Expected Output Flow**
+#### A. Interactive Mode (Conversation Demo)
+Use this to see the agent handle the initial handoff and subsequent chat turns.
 
-1. **Agent Initialization**: You will see a confirmation that the agent has been initialized with its specialized instruction and RAG tool.
-
-2. **Handoff Processing**: The agent will immediately process the simulated handoff_package data, which contains the user's final query (e.g., "Can you help me with childcare options?").
-
-3. **First Response**: The Onward Journey Agent will use its internal RAG tool (query_csv_rag) to retrieve context related to the user's query from the loaded CSV data and generate a specialized response.
-
-4. **Interactive Loop**: The console will enter an interactive loop, allowing you to ask follow-up questions to the specialized agent.
-```
-... (Initialization messages) ...
-User: Can you help me with childcare options?
-
-----------------------------------------------------------------------------------------------------
-🤖 You are now speaking with the Onward Journey Agent.
-🤖 Onward Journey Agent: Of course! I see you're looking for information on childcare. Based on our specialized resources, I can certainly help you with details on claiming tax credits for childcare costs. What specific details are you interested in?
-----------------------------------------------------------------------------------------------------
-
-You:
+```shell
+uv run main.py interactive \
+    --kb_path path/to/your/mock_rag_data.csv \
+    --region eu-west-2
 ```
 
-To exit the conversation, type `quit`, `exit`, or `end`.
+#### B. Testing Mode (Performance Analysis)
+Use this to run the agent against a suite of pre-defined queries and generate the performance report and confusion matrix plot.
 
-### Key Components in `agents.py`
+```shell
+uv run main.py test \
+    --kb_path ./data/processed/mock/mock.csv \
+    --test_data ./data/test/prototype1/user_test_data/user_prompts.csv \
+    --region eu-west-2
+```
 
-#### RAG Implementation (`query_csv_rag`)
-The RAG tool connects the LLM to your custom data. It handles the following steps:
+#### Key Components and AWS Integration
 
-1. **Embedding**: It encodes the user_query using the SentenceTransformer('all-MiniLM-L6-v2').
+##### 1. Bedrock Integration (`agents.py`)
 
-2. **Retrieval**: It calculates the cosine similarity between the query embedding and all pre-computed data embeddings (self.embeddings).
+-  **Client Initialization**: The agent uses `boto3.client('bedrock-runtime', region_name=...)` for secure authentication and connection to the Bedrock service. You can pass the ARN of an IAM role to assume for calls to Bedrock via the `--role_arn` command line argument
 
-3. **Augmentation**: It retrieves the top 3 most relevant chunks of text (K=3) from your CSV data.
+- **Tool Declaration**: Functions are declared using the JSON Schema format required by Anthropic's models on Bedrock.
 
-4. **Generation**: It sends the retrieved context back to the Gemini model for generating the final, informed response.
+- **Inference Pipeline**: The agent uses `client.invoke_model()` to send requests. The tool-use logic involves a multi-step loop where the agent sends the prompt, receives the tool call, executes the local Python `query_csv_rag` function, and sends the results back to Bedrock as a subsequent user message for final answer generation.
 
-#### Conversation Handoff (`process_handoff`)
-The agent initiates the conversation by sending a complex initial prompt containing the previous final_conversation_history and the user's critical question (next_agent_prompt). This ensures the agent retains full context and immediately focuses on solving the user's need.
+##### 2. RAG Implementation (`agents.py` and `data.py`)
+The RAG tool (query_csv_rag) remains the core component that operates locally to:
+
+- Encode the user query using `SentenceTransformer`.
+
+- Perform Cosine Similarity retrieval against pre-computed embeddings.
+
+- Augment the LLM's prompt with the top 3 relevant text chunks.
+
+##### 3. Expected Output Flow
+
+- **Agent Initialization**: Prints confirmation of successful boto3 client connection and tool declaration.
+
+- **Handoff Processing**: The agent sends the initial conversation context to the Bedrock model.
+
+- **First Response**: The Bedrock model calls the query_csv_rag tool, receives the RAG context, and generates a specialized, grounded response.
+
+- **Interactive Loop**: The console enters an interactive chat where each user turn triggers a new invoke_model call, potentially engaging the RAG tool.
