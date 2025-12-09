@@ -3,7 +3,7 @@ terraform {
 
   required_providers {
     aws = {
-      source = "hashicorp/aws"
+      source  = "hashicorp/aws"
       version = "6.21.0"
     }
 
@@ -22,7 +22,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project = "GOV.UK Agents Onward Journey"
+      Project     = "GOV.UK Agents Onward Journey"
       Environment = var.environment
     }
   }
