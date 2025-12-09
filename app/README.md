@@ -46,23 +46,30 @@ uid,service_name,department,phone_number,topic,user_type,tags,url,last_update,de
 # Add more rows of relevant data...
 ```
 
-### 3. Configure `main.py`
-Open main.py and update the placeholder paths and API key in the if __name__ == "__main__": block:
+### 3. How to Run the Agent
 
-```bash
-if __name__ == "__main__":
-    main(
-        RUN_MODE='test',  # Change to 'interactive' for interactive mode
-        PATH_TO_KB='knowledge_base.csv',
-        TEST_DATA_PATH='test_queries.csv',
-        API_KEY='your_api_key_here')
-```
-
-### 5. How to Run the Agent
 Execute the `main.py` script from your terminal:
 ```bash
 uv run main.py
 ```
+
+You can view configuration options by passing the `--help` flag
+```shell
+❯ uv run main.py --help
+usage: main.py [-h] --kb_path KB_PATH [--test_data TEST_DATA] [--region REGION] {interactive,test}
+
+Run the Onward Journey Agent in interactive or testing mode using AWS Bedrock.
+
+positional arguments:
+  {interactive,test}    The run mode: "interactive" for chat, or "test" for mass testing.
+
+options:
+  -h, --help            show this help message and exit
+  --kb_path KB_PATH     Path to the knowledge base (e.g., CSV file) for RAG chunks.
+  --test_data TEST_DATA
+                        Path to the JSON file containing test queries and expected answers (required for "test" mode).
+```
+
 **Expected Output Flow**
 
 1. **Agent Initialization**: You will see a confirmation that the agent has been initialized with its specialized instruction and RAG tool.

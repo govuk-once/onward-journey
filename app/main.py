@@ -2,10 +2,13 @@ import test
 import random
 import numpy as np
 import torch
+import argparse
 
 from data                  import container
 from agents                import OnwardJourneyAgent
 from sentence_transformers import SentenceTransformer
+
+AWS_MODEL_ID = "anthropic.claude-3-7-sonnet-20250219-v1:0"
 
 def set_all_seeds(seed_value=42):
     """
@@ -27,21 +30,21 @@ def set_all_seeds(seed_value=42):
 
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
-
-# --- INTERACTIVE MODE ---
-def run_interactive_mode(path_to_knowledge_base, api_key, seed=1):
+    return
+def run_interactive_mode(path_to_knowledge_base, aws_region="eu-west-2", seed=1):
     """
     Main function to initialize the Onward Journey Agent and run a sample conversation
     (Interactive Mode - Based on the original main() logic).
     """
-
     # Set seeds for reproducibility
     set_all_seeds(seed)
 
+    # Simulated handoff data for interactive mode
     simulated_handoff_data = {
         # Original sample handoff package
         "handoff_agent_id": "Chatbot Agent",
-        "model_used": "gemini-2.5-flash",
+        # Updated model name
+        "model_used": AWS_MODEL_ID,
         "system_instruction_used": "Generic assistant.",
         "final_conversation_history": [
             {"role": "user", "text": "I was asking about childcare."},
@@ -62,18 +65,17 @@ def run_interactive_mode(path_to_knowledge_base, api_key, seed=1):
                embeddings=cont.get_embeddings(),
                chunk_data=cont.get_chunks(),
                embedding_model=cont.get_embedding_model(),
-               model_name='gemini-2.5-flash',
-               api_key=api_key,
+               model_name=AWS_MODEL_ID, # Use the Bedrock model ID
+               aws_region=aws_region,   # Pass the AWS region
                temperature=0.0)
 
-    # Run a sample conversation (Assuming run_interactive_chat method exists in agents.py)
+    # Run a sample conversation
     print("\n" + "-"*80)
     print("Starting Interactive Chat...")
     oj_agent.run_conversation()
     print("-"*80 + "\n")
-
-# --- TEST MODE ---
-def run_test_mode(path_to_knowledge_base, test_data_path, api_key, seed=1):
+    return
+def run_test_mode(path_to_knowledge_base, test_data_path, aws_region="eu-west-2", seed=1):
     """
     Initializes the Onward Journey Agent for mass testing and runs the test suite.
     (Test Harness Mode).
@@ -82,10 +84,10 @@ def run_test_mode(path_to_knowledge_base, test_data_path, api_key, seed=1):
     # Set seeds for reproducibility
     set_all_seeds(seed)
 
+    # Simulated handoff data for test harness mode
     simulated_handoff_data = {
-        # Handoff package structured for testing
-        "handoff_agent_id": "Test Harness",
-        "model_used": "gemini-2.5-flash",
+        "handoff_agent_id": "Chatbot Agent",
+        "model_used": AWS_MODEL_ID,
         "system_instruction_used": "Test mode.",
         "final_conversation_history": [],
         "next_agent_prompt": "Run Test Suite",
@@ -105,27 +107,65 @@ def run_test_mode(path_to_knowledge_base, test_data_path, api_key, seed=1):
                embeddings=cont.get_embeddings(),
                chunk_data=cont.get_chunks(),
                embedding_model=cont.get_embedding_model(),
-               model_name='gemini-2.5-flash',
-               api_key=api_key,
+               model_name=AWS_MODEL_ID,
+               aws_region=aws_region,
                temperature=0.0)
 
-    # Delegate the testing and analysis to the test.py file
+    # Delegate the testing and analysis to the test suite in test.py
     test.run_mass_tests(oj_agent, test_data_path=test_data_path)
 
-def main(RUN_MODE, PATH_TO_KB, TEST_DATA_PATH, API_KEY):
-    if RUN_MODE == 'interactive':
+def main(run_mode, path_to_kb, test_data_path, aws_region_override=None):
+
+    region_to_use = aws_region_override if aws_region_override else "eu-west-2"
+
+    print(f"AWS Region set to: {region_to_use}")
+
+    if run_mode == 'interactive':
         print("Running in INTERACTIVE Mode.")
-        run_interactive_mode(path_to_knowledge_base=PATH_TO_KB, api_key=API_KEY)
-    elif RUN_MODE == 'test':
+        run_interactive_mode(
+            path_to_knowledge_base=path_to_kb,
+            aws_region=region_to_use
+        )
+    elif run_mode == 'test':
         print("Running in MASS TESTING Mode.")
-        run_test_mode(path_to_knowledge_base=PATH_TO_KB, test_data_path=TEST_DATA_PATH, api_key=API_KEY)
+        run_test_mode(
+            path_to_knowledge_base=path_to_kb,
+            test_data_path=test_data_path,
+            aws_region=region_to_use
+        )
     else:
-        print(f"Error: Unknown RUN_MODE '{RUN_MODE}'. Use 'test' or 'interactive'.")
+        print(f"Error: Unknown run_mode '{run_mode}'. Use 'test' or 'interactive'.")
     return
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the Onward Journey Agent in interactive or testing mode using AWS Bedrock.")
+
+    # Required argument for mode
+    parser.add_argument('mode', type=str, choices=['interactive', 'test'],
+                        help='The run mode: "interactive" for chat, or "test" for mass testing.')
+
+    # Required argument for knowledge base path
+    parser.add_argument('--kb_path', type=str, required=True,
+                        help='Path to the knowledge base (e.g., CSV file) for RAG chunks.')
+
+    # Optional argument for test data path (required only for 'test' mode)
+    parser.add_argument('--test_data', type=str, default='./test_queries.json',
+                        help='Path to the JSON file containing test queries and expected answers (required for "test" mode).')
+
+    # Optional argument for overriding the AWS region
+    parser.add_argument('--region', type=str, default="eu-west-2",
+                        help=f'AWS region to use for the Bedrock client (default: {"eu-west-2"}).')
+
+    args = parser.parse_args()
+
+    # Ensure test_data path is provided if the mode is 'test'
+    if args.mode == 'test' and not args.test_data:
+        parser.error("The --test_data argument is required when running in 'test' mode.")
+
+    # Call the main func
     main(
-        RUN_MODE='interactive',  # Change to 'interactive' for interactive mode
-        PATH_TO_KB='knowledge_base.csv',
-        TEST_DATA_PATH='test_queries.csv',
-        API_KEY='AIzaSyCSQmSu9n89CQ7UgDrfZYPcPisKuthslx8')
+        run_mode=args.mode,
+        path_to_kb=args.kb_path,
+        test_data_path=args.test_data,
+        aws_region_override=args.region
+    )

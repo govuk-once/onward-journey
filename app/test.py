@@ -7,7 +7,7 @@ import seaborn as sns
 
 from agents import OnwardJourneyAgent
 
-# --- Helper Functions ---
+# Helper Functions
 
 def clean_phone_number_for_matrix(text: str) -> str:
     """
@@ -66,7 +66,7 @@ def load_test_queries(file_path: str) -> list[dict]:
 
     return test_queries
 
-def test_agent_with_queries(oj_agent: OnwardJourneyAgent, test_queries: list):
+def test_agent_with_queries(oj_agent: OnwardJourneyAgent, test_queries: list, output_dir: str):
     """
     Runs all predefined test queries through the Onward Journey Agent,
     validates the extracted phone number against the expected number,
@@ -79,7 +79,6 @@ def test_agent_with_queries(oj_agent: OnwardJourneyAgent, test_queries: list):
     print("----------------------------------------------------------------------------------------------------")
     print("STARTING MASS TEST: VERIFYING PHONE NUMBER RETRIEVAL")
     print(f"Total queries to test: {len(test_queries)}")
-    print("NOTE: Inserting a 6-second delay between queries to respect API rate limits.")
     print("----------------------------------------------------------------------------------------------------")
 
     results = []
@@ -130,15 +129,14 @@ def test_agent_with_queries(oj_agent: OnwardJourneyAgent, test_queries: list):
                 print("!!! RESOURCE_EXHAUSTED detected. Pausing for 90 seconds for better recovery. !!!")
                 time.sleep(90)
 
-        # 3. Mandatorily wait 10 seconds before the next query to avoid hitting the rate limit
+        # 3. Mandatorily wait 1 second
         if i < len(test_queries) - 1:
-            # INCREASED WAIT TIME to ensure compliance with 10 requests/minute limit
-            time.sleep(10)
+            time.sleep(1)
 
-    # --- Generate Report ---
+    # Generate Report
     report_df = pd.DataFrame(results)
     report_file = 'onward_journey_test_report.csv'
-    report_df.to_csv(report_file, index=False)
+    report_df.to_csv(os.path.join(output_dir, report_file), index=False)
 
     print("-" * 50)
     print("MASS TEST COMPLETE")
@@ -149,11 +147,11 @@ def test_agent_with_queries(oj_agent: OnwardJourneyAgent, test_queries: list):
     print("-" * 50)
 
     # Generate the confusion matrix summary and plot
-    generate_multi_class_confusion_matrix(report_file, output_dir='/Users/alexhiles/Desktop/onwardjourneytool/test_output')
+    generate_multi_class_confusion_matrix(os.path.join(output_dir, report_file), output_dir)
 
     return report_file
 
-def generate_multi_class_confusion_matrix(file_path: str, output_dir: str = 'test_output'):
+def generate_multi_class_confusion_matrix(file_path : str, output_dir: str = 'test_output'):
     """
     Loads the test report and generates a multi-class confusion matrix,
     printing the text table and saving a Matplotlib heatmap.
@@ -177,7 +175,7 @@ def generate_multi_class_confusion_matrix(file_path: str, output_dir: str = 'tes
     correct_predictions = sum(df['Actual_Phone'] == df['Predicted_Phone'])
     overall_accuracy = (correct_predictions / total_predictions) * 100 if total_predictions > 0 else 0
 
-    # --- Text Output ---
+    # Text Output
     print("\n" + "=" * 80)
     print(f"MULTI-CLASS CONFUSION MATRIX REPORT (Total Queries: {total_predictions})")
     print("=" * 80)
@@ -185,10 +183,7 @@ def generate_multi_class_confusion_matrix(file_path: str, output_dir: str = 'tes
     print(f"\nOVERALL QUERY-TO-CONTACT ACCURACY: {overall_accuracy:.2f}%")
     print("=" * 80)
 
-    # --- Matplotlib/Seaborn Plot ---
 
-    # 1. Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
     plot_file = os.path.join(output_dir, 'confusion_matrix_heatmap.png')
 
     plt.figure(figsize=(16, 12))
@@ -217,10 +212,11 @@ def generate_multi_class_confusion_matrix(file_path: str, output_dir: str = 'tes
 
     print(f"\n[Visual Report Saved] Matplotlib heatmap saved to: {plot_file}")
 
-# The main execution function to be called from main.py
+# mass testing function
 def run_mass_tests(oj_agent: OnwardJourneyAgent, test_data_path: str = "user_prompts.csv"):
     """
     Entry point to run the entire testing and analysis pipeline.
     """
     test_queries = load_test_queries(test_data_path)
-    test_agent_with_queries(oj_agent, test_queries)
+    output_dir = os.path.join(os.getcwd(), 'test_output')
+    test_agent_with_queries(oj_agent, test_queries, output_dir)
