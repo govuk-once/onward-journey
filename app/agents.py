@@ -16,8 +16,10 @@ class OnwardJourneyAgent:
                        embeddings : np.ndarray,
                        chunk_data: list[str],
                        embedding_model : SentenceTransformer,
-                       model_name: str = 'gemini-2.5-flash',
+                       aws_role_arn: Optional[str] = None,
                        aws_region: str = 'eu-west-2',
+                       aws_role_session_name: str = "onward-journey-inference",
+                       model_name: str = 'gemini-2.5-flash',
                        temperature: float = 0.0,
                        verbose: bool = False,
                        seed: int = 1):
@@ -26,10 +28,7 @@ class OnwardJourneyAgent:
         self._function_declarations()
 
         # Initialize AWS Bedrock Client
-        try:
-            self.client          = boto3.client(service_name="bedrock-runtime", region_name=aws_region)
-        except:
-            raise ValueError("Failed to initialize Bedrock client. Check your AWS configuration.")
+        self._initialise_aws(aws_region, role_arn=aws_role_arn, role_session_name=aws_role_session_name)
         self.model_name      = model_name
         self.temperature     = temperature
 
@@ -65,6 +64,37 @@ class OnwardJourneyAgent:
 
         # Initialize conversation history
         self.history: List[Dict[str, Any]] = [  ]
+
+    def _initialise_aws(self, aws_region: str, role_arn: Optional[str], role_session_name: str):
+        if role_arn != None:
+            # Assume given role
+            try:
+                sts_client = boto3.client(service_name="sts", region_name=aws_region)
+                assume_role_response = sts_client.assume_role(
+                    RoleArn = role_arn,
+                    RoleSessionName = role_session_name
+                )
+                role_credentials = assume_role_response["Credentials"]
+            except:
+                raise ValueError(f"Failed to assume role %s using session name %s" % (role_arn, role_session_name))
+
+            try:
+                self.client = boto3.client(
+                    service_name="bedrock-runtime",
+                    region_name=aws_region,
+                    aws_access_key_id = role_credentials["AccessKeyId"],
+                    aws_secret_access_key = role_credentials["SecretAccessKey"],
+                    aws_session_token = role_credentials["SessionToken"]
+                )
+            except:
+                raise ValueError("Failed to initialize Bedrock client. Check your AWS configuration.")
+
+        else:
+            # Use credentials from environment and config files without assuming a role
+            try:
+                self.client = boto3.client(service_name="bedrock-runtime", region_name=aws_region)
+            except:
+                raise ValueError("Failed to initialize Bedrock client. Check your AWS configuration.")
 
     def _function_declarations(self):
 

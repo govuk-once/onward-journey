@@ -1,3 +1,4 @@
+from typing import Optional
 import test
 import random
 import numpy as np
@@ -31,7 +32,7 @@ def set_all_seeds(seed_value=42):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
     return
-def run_interactive_mode(path_to_knowledge_base, aws_region="eu-west-2", seed=1):
+def run_interactive_mode(path_to_knowledge_base, aws_role_arn: Optional[str], aws_region="eu-west-2", seed=1):
     """
     Main function to initialize the Onward Journey Agent and run a sample conversation
     (Interactive Mode - Based on the original main() logic).
@@ -67,6 +68,7 @@ def run_interactive_mode(path_to_knowledge_base, aws_region="eu-west-2", seed=1)
                embedding_model=cont.get_embedding_model(),
                model_name=AWS_MODEL_ID, # Use the Bedrock model ID
                aws_region=aws_region,   # Pass the AWS region
+               aws_role_arn=aws_role_arn,
                temperature=0.0)
 
     # Run a sample conversation
@@ -75,7 +77,7 @@ def run_interactive_mode(path_to_knowledge_base, aws_region="eu-west-2", seed=1)
     oj_agent.run_conversation()
     print("-"*80 + "\n")
     return
-def run_test_mode(path_to_knowledge_base, test_data_path, aws_region="eu-west-2", seed=1):
+def run_test_mode(path_to_knowledge_base, test_data_path, aws_role_arn: Optional[str], aws_region="eu-west-2", seed=1):
     """
     Initializes the Onward Journey Agent for mass testing and runs the test suite.
     (Test Harness Mode).
@@ -109,12 +111,13 @@ def run_test_mode(path_to_knowledge_base, test_data_path, aws_region="eu-west-2"
                embedding_model=cont.get_embedding_model(),
                model_name=AWS_MODEL_ID,
                aws_region=aws_region,
+               aws_role_arn=aws_role_arn,
                temperature=0.0)
 
     # Delegate the testing and analysis to the test suite in test.py
     test.run_mass_tests(oj_agent, test_data_path=test_data_path)
 
-def main(run_mode, path_to_kb, test_data_path, aws_region_override=None):
+def main(run_mode, path_to_kb, test_data_path, aws_region_override=None, aws_role_arn: Optional[str] = None):
 
     region_to_use = aws_region_override if aws_region_override else "eu-west-2"
 
@@ -124,14 +127,16 @@ def main(run_mode, path_to_kb, test_data_path, aws_region_override=None):
         print("Running in INTERACTIVE Mode.")
         run_interactive_mode(
             path_to_knowledge_base=path_to_kb,
-            aws_region=region_to_use
+            aws_region=region_to_use,
+            aws_role_arn=aws_role_arn
         )
     elif run_mode == 'test':
         print("Running in MASS TESTING Mode.")
         run_test_mode(
             path_to_knowledge_base=path_to_kb,
             test_data_path=test_data_path,
-            aws_region=region_to_use
+            aws_region=region_to_use,
+            aws_role_arn=aws_role_arn
         )
     else:
         print(f"Error: Unknown run_mode '{run_mode}'. Use 'test' or 'interactive'.")
@@ -156,6 +161,8 @@ if __name__ == "__main__":
     parser.add_argument('--region', type=str, default="eu-west-2",
                         help=f'AWS region to use for the Bedrock client (default: {"eu-west-2"}).')
 
+    parser.add_argument('--role_arn', type=str, default=None, help="The ARN of the AWS role to assume for Bedrock calls if provided" )
+
     args = parser.parse_args()
 
     # Ensure test_data path is provided if the mode is 'test'
@@ -167,5 +174,6 @@ if __name__ == "__main__":
         run_mode=args.mode,
         path_to_kb=args.kb_path,
         test_data_path=args.test_data,
-        aws_region_override=args.region
+        aws_region_override=args.region,
+        aws_role_arn=args.role_arn
     )
