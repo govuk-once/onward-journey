@@ -25,7 +25,7 @@ Follow these steps to set up and run the project locally.
 
 ### 1. Prerequisites
 
-Make sure you have the repository pre-requisites from (the root README)[../README.MD] installed.
+Make sure you have the repository pre-requisites from [the root README](../README.MD) installed.
 
 You will need a Gemini API key from [Google AI Studio](https://aistudio.google.com/app/api-keys) to run this code
 

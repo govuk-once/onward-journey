@@ -15,6 +15,11 @@ You should also install all the tools from the [laptop-configuration repo](https
 
 Install the pre-commit hooks with `pre-commit install`. This will run the hooks listed in `.pre-commit-config.yaml` before each commit
 
+## Running the application
+
+There are instructions for running the prototype application in [the `app` directory README](app/README.md)
+
+
 ## Deploying infrastructure
 
 You need to have the gds cli installed and configured to be able to deploy infrastructure, to the point that `gds aws once-onwardjourney-development-readonly -- echo "test"` succeeds
