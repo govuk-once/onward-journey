@@ -19,14 +19,6 @@ You need to have the gds cli installed and configured to be able to deploy infra
 
 We use the gds cli to assume roles on our development machines, for a list of relevant roles see `gds aws | grep onwardjourney`. You use one of these roles when working with terraform by running e.g. `gds aws <role-name> -- terraform plan`, or you can run `gds aws <role-name> -- $SHELL` to start a new shell session authenticated as the relevant role.
 
-### Bootstrap
-
-There is an `infrastructure/bootstrap` directory for managing the remote state in S3
-
-### Application
-
-To deploy changes to the Onward Journey application and services, you can use the terraform code in `infrastructure/application` and then `terraform plan` and `terraform apply` it
-
 You can switch workspaces to deploy an entirely different instance, for example to test changes in an isolated environment without affecting the default workspace:
 ```shell
 # View existing and selected workspace
