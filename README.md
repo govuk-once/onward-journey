@@ -21,6 +21,11 @@ We use the gds cli to assume roles on our development machines, for a list of re
 
 You will need to create a configuration file for the terraform backend for each target AWS account. Do this by copying `environments/.example.config` to `environments/<environment name>.config`, and filling in the placeholders
 
+You will also need to set the environment name in `infrastructure/local.auto.tfvars`:
+```shell
+echo 'environment = "<environment name>" >> local.auto.tfvars'
+```
+
 You need to initialise the terraform in the `infrastructure/` directory before you can deploy. You will also need to run this when you change what AWS account you are targeting, e.g. from development to staging
 ```shell
 # Run within an authenticated session from from `gds aws`

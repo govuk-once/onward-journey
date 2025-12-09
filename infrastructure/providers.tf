@@ -22,9 +22,8 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Team = "GOV.UK Agents Onward Journey"
-      Module = "application"
-      Workspace = terraform.workspace
+      Project = "GOV.UK Agents Onward Journey"
+      Environment = var.environment
     }
   }
 }
