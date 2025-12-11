@@ -9,7 +9,7 @@ A prototype for connecting users to further support after a chat session can't p
 
 This project uses [mise-en-place](https://mise.jdx.dev/getting-started.html) to manage runtime versions
 
-After installing `mise`, you should run `mise activate` from the root of this repo or [set up your shell to automatically activate mise on startup](https://mise.jdx.dev/getting-started.html#activate-mise)
+After installing `mise`, you should run `mise activate` from the root of this repo or [set up your shell to automatically activate mise on startup](https://mise.jdx.dev/getting-started.html#activate-mise), then run `mise install`
 
 You should also install all the tools from the [laptop-configuration repo](https://github.com/govuk-once/laptop-configuration)
 
