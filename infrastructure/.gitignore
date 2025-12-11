@@ -1,0 +1,8 @@
+# Terraform state
+.terraform
+
+# Ignore environment-specific tf backend config files
+environments/*.config
+
+# Ignore local tfvars files
+local.auto.tfvars
