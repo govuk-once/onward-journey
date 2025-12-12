@@ -25,35 +25,19 @@ Follow these steps to set up and run the project locally.
 
 ### 1. Prerequisites
 
-* **Python 3.9+**
+* Make sure you have the repository pre-requisites from [the root README](../README.MD) installed.
 * **AWS Account** with configured **IAM credentials** (via CLI or environment variables).
 * Model Access Granted for the desired Claude model (e.g., Claude 3.5 Sonnet) in your target AWS region.
 
-### 2. Environment Setup
-
-Create a virtual environment and install the required dependencies:
-
-```python
-# Create a virtual environment
-python -m venv venv
-
-# Activate the virtual environment
-# On macOS/Linux
-source venv/bin/activate
-
-# Install dependencies (based on project usage)
-pip install google-genai pandas numpy scikit-learn sentence-transformers torch matplotlib seaborn boto3
-```
-
-### 3. Data Preparation
+### 2. Data Preparation
 
 You will need a mock CSV file to simulate your internal data source for the RAG tool.
 
-See data/processed/mock/mock.csv as an example.
+Create a file named mock_rag_data.csv (or similar) in your project directory.
 
 Ensure it contains the columns expected by the df_to_text_chunks function in data.py: `uid`, `service_name`, `department`, `phone_number`, `topic`, `user_type`, `tags`, `url`, `last_update`, and `description`.
 
-Example `mock.csv` Structure:
+Example `mock` Structure:
 
 ```bash
 uid,service_name,department,phone_number,topic,user_type,tags,url,last_update,description
@@ -62,21 +46,28 @@ uid,service_name,department,phone_number,topic,user_type,tags,url,last_update,de
 # Add more rows of relevant data...
 ```
 
-### 4. Configure and Run
+### 3. Run the Agent
+
+You can view all configuration options and a description of each by passing the `--help` flag:
+
+```shell
+uv run main.py --help
+```
 
 #### A. Interactive Mode (Conversation Demo)
 Use this to see the agent handle the initial handoff and subsequent chat turns.
 
-```
-python main.py interactive \
-    --kb_path ./data/processed/mock/mock.csv \
+```shell
+uv run main.py interactive \
+    --kb_path path/to/your/mock_rag_data.csv \
     --region eu-west-2
 ```
 
-#### B. Testing Mode (Performance Analysis) 
+#### B. Testing Mode (Performance Analysis)
 Use this to run the agent against a suite of pre-defined queries and generate the performance report and confusion matrix plot.
-```
-python main.py test \
+
+```shell
+uv run main.py test \
     --kb_path ./data/processed/mock/mock.csv \
     --test_data ./data/test/prototype1/user_test_data/user_prompts.csv \
     --region eu-west-2
@@ -86,7 +77,7 @@ python main.py test \
 
 ##### 1. Bedrock Integration (`agents.py`)
 
--  **Client Initialization**: The agent uses `boto3.client('bedrock-runtime', region_name=...)` for secure authentication and connection to the Bedrock service.
+-  **Client Initialization**: The agent uses `boto3.client('bedrock-runtime', region_name=...)` for secure authentication and connection to the Bedrock service. You can pass the ARN of an IAM role to assume for calls to Bedrock via the `--role_arn` command line argument
 
 - **Tool Declaration**: Functions are declared using the JSON Schema format required by Anthropic's models on Bedrock.
 
