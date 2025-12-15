@@ -5,3 +5,11 @@ resource "aws_s3_bucket" "dataset_storage" {
   # Dataset files get uploaded when creating a new environment
   force_destroy = true
 }
+
+resource "aws_s3_bucket_versioning" "dataset_storage" {
+  bucket = aws_s3_bucket.dataset_storage.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
