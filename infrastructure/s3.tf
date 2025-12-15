@@ -13,3 +13,13 @@ resource "aws_s3_bucket_versioning" "dataset_storage" {
     status = "Enabled"
   }
 }
+
+# Explicitly block public access to dataset s3 bucket
+resource "aws_s3_bucket_public_access_block" "dataset_storage" {
+  bucket = aws_s3_bucket.dataset_storage.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
