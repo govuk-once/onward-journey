@@ -34,12 +34,14 @@ resource "aws_iam_policy" "dataset_read" {
 
 data "aws_iam_policy_document" "dataset_read" {
   statement {
+    sid     = "ListBucket"
     actions = ["s3:ListBucket"]
 
     resources = [aws_s3_bucket.dataset_storage.arn]
   }
 
   statement {
+    sid     = "ReadBucketObjects"
     actions = ["s3:GetObject"]
 
     resources = ["${aws_s3_bucket.dataset_storage.arn}/*"]
