@@ -1,15 +1,15 @@
 import pandas as pd
 import json
-import os 
+import os
 
-def process_conversations(df):    
+def process_conversations(df):
     """
-    Processes the conversation DataFrame to extract structured conversations into a 
+    Processes the conversation DataFrame to extract structured conversations into a
     dictionary where keys are unique conversation IDs.
-    
-    The input DataFrame must contain: user_id, session_id, seq_num, user_question, 
+
+    The input DataFrame must contain: user_id, session_id, seq_num, user_question,
     answer - as shown to user, question_routing_label, and status.
-    
+
     Returns: A dictionary where keys are 'CONV_X' and values are the conversation details.
     """
 
@@ -21,7 +21,7 @@ def process_conversations(df):
     # --- 2. Create Grouping Key ---
     # A conversation starts every time 'seq_num' is 1 (the first turn of a new chat session).
     # (df['seq_num'] == 1) creates a boolean Series (True/False).
-    # .cumsum() converts True (1) and False (0) to cumulative sums. 
+    # .cumsum() converts True (1) and False (0) to cumulative sums.
     # This generates a unique ID for each conversation group: 1, 1, 1, 2, 2, 3, 3, 3, ...
     df['conversation_group_id'] = (df['seq_num'] == 1).cumsum()
 
@@ -31,7 +31,7 @@ def process_conversations(df):
 
     # --- 3. Iterate, Transform, and Construct the Final Dictionary ---
     for group_id, group_df in grouped:
-        
+
         # 3a. Prepare the list of turns/interactions
         turns = []
         # Iterate over each row in the current conversation group
@@ -45,7 +45,7 @@ def process_conversations(df):
                 'status': row['status']
             }
             turns.append(turn)
-        
+
         # 3b. Build the conversation data object (the value for the final dictionary)
         conversation_data = {
             # Take the first value for user_id and session_id as they are constant for the group
@@ -53,22 +53,22 @@ def process_conversations(df):
             'session_id': group_df['session_id'].iloc[0],
             'turns': turns # The list of turns created above
         }
-        
+
         # 3c. Build the key and add to the final dictionary
         # Key format: CONV_1, CONV_2, etc.
         conversation_key = f"CONV_{group_id}"
         final_conversations_dict[conversation_key] = conversation_data
-    
+
     return final_conversations_dict
 
 def save_json_to_file(data_dict, output_filepath):
     """
     Saves the given Python dictionary to a specified file path as well-formatted JSON.
-    
+
     Args:
         data_dict (dict): The dictionary containing the conversation data (all grouped data).
         output_filepath (str): The full path where the JSON file should be saved.
-    
+
     Returns:
         bool: True if save was successful, False otherwise.
     """
@@ -77,19 +77,19 @@ def save_json_to_file(data_dict, output_filepath):
         output_dir = os.path.dirname(output_filepath)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        
+
         with open(output_filepath, 'w') as json_file:
             # Use json.dump for direct writing, with indent=2 for readability
             # This saves the entire conversations_dict into one large JSON file
             json.dump(data_dict, json_file, indent=2)
-            
+
         print(f"✅ Successfully saved {len(data_dict)} conversations.")
         print(f"File location: **{os.path.abspath(output_filepath)}**")
         return True
     except IOError as e:
         print(f"❌ An error occurred while writing the file to '{output_filepath}': {e}")
         return False
-        
+
 def save_individual_conversations(conversations_dict, output_dir):
     """
     Saves each conversation in the dictionary as a separate JSON file.
@@ -97,24 +97,24 @@ def save_individual_conversations(conversations_dict, output_dir):
     Args:
         conversations_dict (dict): Dictionary where keys are conversation IDs and values are conversation data.
         output_dir (str): The directory where individual files will be saved.
-    
+
     Returns:
         int: The number of files successfully saved.
     """
-    
+
     # Create the output directory if it doesn't exist
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         print(f"Created directory: {output_dir}")
-    
+
     saved_count = 0
     total_count = len(conversations_dict)
-    
+
     for conv_id, conv_data in conversations_dict.items():
         # The filename will be the conversation ID (e.g., CONV_1.json)
         filename = f"{conv_id}.json"
         filepath = os.path.join(output_dir, filename)
-        
+
         try:
             with open(filepath, 'w') as f:
                 # We save the conversation data (the value) here
@@ -122,22 +122,22 @@ def save_individual_conversations(conversations_dict, output_dir):
             saved_count += 1
         except IOError as e:
             print(f"❌ Error saving conversation {conv_id} to {filepath}: {e}")
-            
+
     print(f"\n✅ Successfully saved {saved_count} of {total_count} conversations to individual files.")
     print(f"Output folder: **{os.path.abspath(output_dir)}**")
-    
+
     return saved_count
 
 def process_and_save_data(raw_data_dir, grouped_json_base_dir, individual_json_base_dir):
     """
-    Processes all CSV files in a raw directory, groups conversations, 
+    Processes all CSV files in a raw directory, groups conversations,
     and saves the results to specified JSON output directories.
 
     Args:
         raw_data_dir (str): Path to the directory containing raw CSV files.
-        grouped_json_base_dir (str): Path to the directory for saving 
+        grouped_json_base_dir (str): Path to the directory for saving
                                      the full, grouped JSON file for each CSV.
-        individual_json_base_dir (str): Path to the directory for saving 
+        individual_json_base_dir (str): Path to the directory for saving
                                         individual conversation JSON files.
     """
     # Ensure output directories exist before starting any file operations
@@ -150,10 +150,10 @@ def process_and_save_data(raw_data_dir, grouped_json_base_dir, individual_json_b
     except FileNotFoundError:
         print(f"Error: Raw data directory not found at '{raw_data_dir}'")
         return
-    
+
     # Filter for only CSV files to avoid processing unrelated files
     csv_files = [f for f in file_paths if f.endswith('.csv')]
-    
+
     print(f"Found {len(csv_files)} CSV files to process.")
 
     for file in csv_files:
@@ -195,11 +195,11 @@ def main(raw_dir, grouped_output_dir, individual_output_dir):
         grouped_json_base_dir=grouped_output_dir,
         individual_json_base_dir=individual_output_dir
     )
-    return 
-    
+    return
+
 
 if __name__ == "__main__":
-    
+
     raw_deadend_dir               = 'path/to/raw'
     grouped_output_dir            = 'path/to/processed/json/grouped_conversations'
     individual_output_dir         = 'path/to/processed/json/individual_conversations'

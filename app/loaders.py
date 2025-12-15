@@ -1,4 +1,4 @@
-import os 
+import os
 from typing import Any, Dict, List
 import json
 import pandas as pd
@@ -8,7 +8,7 @@ from helpers import extract_and_standardize_phone
 
 def load_test_queries(file_path: str) -> list[dict]:
     """
-    Loads test queries from the specified file path, supporting both 
+    Loads test queries from the specified file path, supporting both
     structured JSON (for multi-turn tests) and CSV (for simple tests).
     """
     if not os.path.exists(file_path):
@@ -41,7 +41,7 @@ def load_test_queries(file_path: str) -> list[dict]:
                     'query': str(row['Question']),
                     'expected_phone_number': str(row['phone_number']),
                     'is_ambiguous': False,
-                    'simulated_clarification_response': 'N/A' 
+                    'simulated_clarification_response': 'N/A'
                 })
             print(f"Loaded {len(test_cases)} cases from CSV file (set to one-turn mode).")
         except Exception as e:
@@ -59,21 +59,21 @@ def load_test_queries(file_path: str) -> list[dict]:
     return test_cases
 
 def save_test_results(
-    cm_df        : pd.DataFrame, 
-    mapping_dict : Dict[str, str], 
-    detailed_df  : pd.DataFrame, 
-    accuracy     : float, 
-    fig          : plt.Figure, 
+    cm_df        : pd.DataFrame,
+    mapping_dict : Dict[str, str],
+    detailed_df  : pd.DataFrame,
+    accuracy     : float,
+    fig          : plt.Figure,
     output_dir   : str = "test_output/prototype2"
 ) -> str:
     """Saves the test artifacts to the fixed output directory."""
-    
+
     os.makedirs(output_dir, exist_ok=True)
     cm_df.to_csv(os.path.join(output_dir, "confusion_matrix_uid.csv"))
-    
+
     plot_file_path = os.path.join(output_dir, "confusion_matrix_plot.png")
-    fig.savefig(plot_file_path) 
-    
-    plt.close(fig) 
-    
+    fig.savefig(plot_file_path)
+
+    plt.close(fig)
+
     return output_dir

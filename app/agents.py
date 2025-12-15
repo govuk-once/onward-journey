@@ -1,4 +1,4 @@
-import json 
+import json
 import numpy as np
 import boto3
 
@@ -20,10 +20,10 @@ class OnwardJourneyAgent:
                        model_name: str = 'gemini-2.5-flash',
                        aws_region: str = 'eu-west-2',
                        aws_role_session_name : str = 'onward-journey-inference',
-                       temperature: float = 0.0, 
+                       temperature: float = 0.0,
                        verbose: bool = False,
                        seed: int = 1):
-               
+
         # Function Declarations for Tools
         self._function_declarations()
 
@@ -39,7 +39,7 @@ class OnwardJourneyAgent:
 
         # Store the handoff package for processing
         self.handoff_package = handoff_package
-        
+
         # Define available tools and their names
         self.specialized_tools = [self.query_csv_rag]
         self.available_tools   = {f.__name__: f for f in self.specialized_tools}
@@ -62,7 +62,7 @@ class OnwardJourneyAgent:
                     "Make sure your responses are formatted well for the user to read."
                                   )
         # Verbosity for debugging
-        self.verbose = verbose 
+        self.verbose = verbose
 
         # Initialize conversation history
         self.history: List[Dict[str, Any]] = [  ]
@@ -97,7 +97,7 @@ class OnwardJourneyAgent:
                 self.client = boto3.client(service_name="bedrock-runtime", region_name=aws_region)
             except:
                 raise ValueError("Failed to initialize Bedrock client. Check your AWS configuration.")
-        return 
+        return
     def _function_declarations(self):
 
         self.query_csv_declaration = {
@@ -114,20 +114,20 @@ class OnwardJourneyAgent:
                             "required": ["user_query"],
                           },
         }
-        
+
         self.bedrock_tools = [
             self.query_csv_declaration
         ]
-        
+
         return
 
     def _add_to_history(self, role: str, content: Optional[str] = None, tool_calls: Optional[List[Dict]] = None, tool_results: Optional[List[Dict]] = None):
             """Adds a message to the internal history list in Bedrock format."""
             message: Dict[str, Any] = {"role": role, "content": []}
-            
+
             if content:
                 message['content'].append({"type": "text", "text": content})
-            
+
             if tool_calls:
                 for call in tool_calls:
                     message['content'].append(call)
@@ -146,7 +146,7 @@ class OnwardJourneyAgent:
         """
         # 1. Add the new user prompt to history
         self._add_to_history(role="user", content=prompt)
-        
+
         # Handle clarification state
         if self.awaiting_clarification:
             self.awaiting_clarification = False
@@ -165,7 +165,7 @@ class OnwardJourneyAgent:
                 "temperature": self.temperature,
                 "tools": self.bedrock_tools,
             }
-            
+
             # Send the request to Bedrock
             bedrock_response = self.client.invoke_model(
                 modelId=self.model_name,
@@ -173,16 +173,16 @@ class OnwardJourneyAgent:
                 contentType='application/json',
                 accept='application/json'
             )
-            
+
             # Parse the response
             response_body = json.loads(bedrock_response.get('body').read())
-            
+
             model_content = response_body.get('content', [])
-            
+
             # Extract Text or Tool Calls
             tool_calls = [c for c in model_content if c.get('type') == 'tool_use']
             text_content = next((c.get('text') for c in model_content if c.get('type') == 'text'), None)
-            
+
             # Add the model's response to history
             self._add_to_history(role="assistant", content=text_content, tool_calls=tool_calls)
 
@@ -196,22 +196,22 @@ class OnwardJourneyAgent:
             if not tool_calls:
                 response_text = text_content if text_content else "I couldn't generate a response."
                 break
-            
+
             # Execute Tools and prepare results for history
             tool_results_for_history = []
-            
+
             for call in tool_calls:
                 tool_use_id   = call['id']
                 function_name = call['name']
                 args          = call['input'] # 'input' holds the arguments
-                
+
                 if self.verbose:
                     print(f"Onward Journey requests tool call: {function_name}({args})")
-                
+
                 if function_name in self.available_tools:
                     tool_function = self.available_tools[function_name]
                     tool_result = tool_function(**args)
-                    
+
                     if self.verbose:
                         print(f"Tool execution result: {tool_result}")
 
@@ -233,11 +233,11 @@ class OnwardJourneyAgent:
                             {"type": "text", "text": f"Tool '{function_name}' is not allowed."}
                         ]
                     })
-            
+
             # 4. Add the tool results to history and continue the loop for the next LLM turn
             self._add_to_history(role="user", tool_results=tool_results_for_history)
-            
-            # Loop continues: The next iteration of the while loop sends the history 
+
+            # Loop continues: The next iteration of the while loop sends the history
             # including the tool results back to the model.
 
         return response_text
@@ -249,7 +249,7 @@ class OnwardJourneyAgent:
         if self.verbose:
             print("\n" + "=" * 50)
             print(f"Agent Processing Handoff from: {self.handoff_package['handoff_agent_id']}")
-            
+
         # Bedrock's history starts *fresh* with this complex handoff message
         context_prompt = (
                 f"Previous conversation history: {json.dumps(self.handoff_package['final_conversation_history'])}. "
@@ -257,36 +257,36 @@ class OnwardJourneyAgent:
                 "Please analyze the history and fulfill the user's request, using your specialized tools if necessary."
             )
         print('User: ', self.handoff_package['next_agent_prompt'])
-            
+
         # Use the internal send method to process the handoff, which manages history
         first_response = self._send_message_and_handle_tools(context_prompt)
 
         return first_response
-    
+
     def run_conversation(self)-> None:
         """
-        Runs the full conversation: handles the handoff first, then starts the 
+        Runs the full conversation: handles the handoff first, then starts the
         interactive loop with the user.
         """
         # 1. Handle the Handover (Initial response to the collected context)
-        
+
         #first_response = self.process_handoff()
-            
+
         # Display the specialized agent's first response
         print("\n" + "-" * 100)
         print("You are now speaking with the Onward Journey Agent.")
         #print(f"Onward Journey Agent: {first_response}")
         print("-" * 100 + "\n")
-            
+
         # 2. Start the interactive loop
         while True:
             user_input = input("You: ")
-                
+
             # Allow user to end the conversation
             if user_input.strip().lower() in ["quit", "exit", "end"]:
                 print("\n👋 Conversation with Onward Journey Agent ended.")
                 break
-                
+
             if not user_input.strip():
                 continue
 
@@ -298,11 +298,11 @@ class OnwardJourneyAgent:
     def query_csv_rag(self, user_query: str) -> str:
         """
         Performs Retrieval Augmented Generation (RAG) on internal CSV data.
-        Use this tool to answer user queries on available data. 
-        
+        Use this tool to answer user queries on available data.
+
         Args:
             user_query (str): The user's specific request (e.g., "Tell me about tax").
-            
+
         Returns:
             str: A string containing the top K most relevant text chunks (context).
         """
@@ -315,29 +315,29 @@ class OnwardJourneyAgent:
         # 2. Perform Similarity Search (Retrieval)
         # Compute cosine similarity between the query and all chunk embeddings
         similarity_scores = cosine_similarity(
-            query_embedding.reshape(1, -1), 
+            query_embedding.reshape(1, -1),
             self.embeddings
         )[0]
-        
+
         # Get the indices of the top K relevant chunks
         K = 3 # Retrieve top 3 documents
-        top_indices = similarity_scores.argsort()[-K:][::-1] 
+        top_indices = similarity_scores.argsort()[-K:][::-1]
 
         # 3. Augment Context
         retrieved_chunks = [self.chunk_data[i] for i in top_indices]
-        
+
         # 4. Return Context for LLM Generation
         context_string = "\n".join(retrieved_chunks)
-        
+
         # The model receives this context and uses it to answer the user_query
         return f"Retrieved Context:\n{context_string}"
 
     def get_forced_response(self, user_query: str) -> str:
             """
-            Processes a single user query by forcing the LLM to call the RAG tool 
+            Processes a single user query by forcing the LLM to call the RAG tool
             immediately, bypassing the Clarification Logic. Used for quantitative testing.
             """
-            
+
             # TEMPORARY SYSTEM INSTRUCTION
             forced_system_instruction = (
                 "You are the **Onward Journey Agent**. Your sole goal is to answer the user's query. "
@@ -348,7 +348,7 @@ class OnwardJourneyAgent:
             )
 
             initial_messages = [{"role": "user", "content": [{"type": "text", "text": user_query}]}]
-            
+
             # Force Tool Call
             body1 = {
                 "anthropic_version": "bedrock-2023-05-31",
@@ -358,7 +358,7 @@ class OnwardJourneyAgent:
                 "temperature": self.temperature,
                 "tools": self.bedrock_tools,
             }
-            
+
             bedrock_response1 = self.client.invoke_model(modelId=self.model_name, body=json.dumps(body1))
             response_body1 = json.loads(bedrock_response1.get('body').read())
 
@@ -371,19 +371,19 @@ class OnwardJourneyAgent:
             # Execute Tool and Get Final Answer
             function_call = tool_calls[0]
             tool_output = self.query_csv_rag(function_call['input']['user_query'])
-            
+
             tool_result_part = {
                 "type": "tool_result",
                 "tool_use_id": function_call['id'],
                 "content": [{"type": "text", "text": tool_output}]
             }
-            
+
             history_with_tool_output = [
                 {"role": "user", "content": [{"type": "text", "text": user_query}]},
-                {"role": "assistant", "content": [function_call]}, 
+                {"role": "assistant", "content": [function_call]},
                 {"role": "user", "content": [tool_result_part]}
             ]
-            
+
             body2 = {
                 "anthropic_version": "bedrock-2023-05-31",
                 "messages": history_with_tool_output,
@@ -394,7 +394,7 @@ class OnwardJourneyAgent:
 
             bedrock_response2 = self.client.invoke_model(modelId=self.model_name, body=json.dumps(body2))
             response_body2 = json.loads(bedrock_response2.get('body').read())
-            
+
             final_text_content = next((c.get('text') for c in response_body2.get('content', []) if c.get('type') == 'text'), None)
             return final_text_content if final_text_content else "Error generating final response after forced tool call."
 
@@ -403,7 +403,7 @@ class OnwardJourneyAgent:
         Processes a single user query, including RAG tool use, and returns the final response.
         This is a non-interactive method designed for mass testing, adapted for Bedrock.
         """
-            
+
         # System instruction to force tool use and focus on the final LLM response
         system_instruction = (
                 "You are a helpful Onward Journey Agent. Your only goal is to answer the user's query "
@@ -413,11 +413,11 @@ class OnwardJourneyAgent:
                 "ONLY output the final answer after the tool call is complete."
             )
 
-        # Prepare the initial message from user 
+        # Prepare the initial message from user
         initial_messages = [
                 {"role": "user", "content": [{"type": "text", "text": user_query}]}
             ]
-            
+
         # Set up json body for Bedrock API call
         body1 = {
                 "anthropic_version": "bedrock-2023-05-31",
@@ -427,7 +427,7 @@ class OnwardJourneyAgent:
                 "temperature": self.temperature,
                 "tools": self.bedrock_tools,
             }
-        # First call to get model response 
+        # First call to get model response
         bedrock_response1 = self.client.invoke_model(
                 modelId=self.model_name,
                 body=json.dumps(body1),
@@ -436,7 +436,7 @@ class OnwardJourneyAgent:
             )
         # Parse model response
         response_body1 = json.loads(bedrock_response1.get('body').read())
-            
+
         # Extract tool calls from the response
         model_content1 = response_body1.get('content', [])
         tool_calls = [c for c in model_content1 if c.get('type') == 'tool_use']
@@ -447,10 +447,10 @@ class OnwardJourneyAgent:
             function_name = function_call['name']
             tool_use_id = function_call['id']
             user_query_for_rag = function_call['input']['user_query']
-            
+
             # Execute the RAG tool
             tool_output = self.query_csv_rag(user_query_for_rag)
-            
+
             # Construct the Tool Response Part
             tool_result_part = {
                 "type": "tool_result",
@@ -459,14 +459,14 @@ class OnwardJourneyAgent:
                     {"type": "text", "text": tool_output}
                 ]
             }
-            
+
             # Second call: Get final answer using tool output
             # The history needs to be rebuilt for the second turn: [User query, LLM calls tool, Tool output]
             history_with_tool_output = [
                 # User Query
                 {"role": "user", "content": [{"type": "text", "text": user_query}]},
                 # LLM Calls Tool
-                {"role": "assistant", "content": [function_call]}, 
+                {"role": "assistant", "content": [function_call]},
                 # Tool Output
                 {"role": "user", "content": [tool_result_part]}
             ]
@@ -488,10 +488,10 @@ class OnwardJourneyAgent:
             )
             # Parse the second response
             response_body2 = json.loads(bedrock_response2.get('body').read())
-            
+
             # Extract final text content
             final_text_content = next((c.get('text') for c in response_body2.get('content', []) if c.get('type') == 'text'), None)
             return final_text_content if final_text_content else "Error generating final response."
-            
+
             # Fallback if no tool was called
         return next((c.get('text') for c in model_content1 if c.get('type') == 'text'), "No tool call and no text in first response.")
