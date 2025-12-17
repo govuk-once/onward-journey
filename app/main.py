@@ -1,147 +1,121 @@
-from typing import Optional
-import test
 import random
 import numpy as np
 import torch
 import argparse
 
-from data                  import container
+from data                  import vectorStore
 from agents                import OnwardJourneyAgent
+from loaders               import load_test_queries
 from sentence_transformers import SentenceTransformer
 
-AWS_MODEL_ID = "anthropic.claude-3-7-sonnet-20250219-v1:0"
+import test
 
-def set_all_seeds(seed_value=42):
+class AgentRunner:
     """
-    Sets the random seed for reproducibility across key libraries.
-    """
-    # 1. Python built-in 'random' module
-    random.seed(seed_value)
-
-    # 2. NumPy (used for array/matrix operations, including embeddings)
-    np.random.seed(seed_value)
-
-    # 3. PyTorch (the underlying framework for SentenceTransformer models)
-    torch.manual_seed(seed_value)
-
-    # 4. PyTorch GPU operations (if you are using a GPU)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed_value)
-        torch.cuda.manual_seed_all(seed_value) # For multiple GPUs
-
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-    return
-def run_interactive_mode(path_to_knowledge_base, aws_role_arn: Optional[str], aws_region="eu-west-2", seed=1):
-    """
-    Main function to initialize the Onward Journey Agent and run a sample conversation
-    (Interactive Mode - Based on the original main() logic).
-    """
-    # Set seeds for reproducibility
-    set_all_seeds(seed)
-
-    # Simulated handoff data for interactive mode
-    simulated_handoff_data = {
-        # Original sample handoff package
-        "handoff_agent_id": "Chatbot Agent",
-        # Updated model name
-        "model_used": AWS_MODEL_ID,
-        "system_instruction_used": "Generic assistant.",
-        "final_conversation_history": [
-            {"role": "user", "text": "I was asking about childcare."},
-            {"role": "model", "text": "That requires specialized assistance."}],
-        "next_agent_prompt": "Can you help me with childcare options?",
-        "status": "DATA_COLLECTED_AND_READY_FOR_HANDOFF"
-    }
-
-    # Initialize Data Container
-    cont = container(
-        file_path=path_to_knowledge_base,
-        embedding_model=SentenceTransformer('all-MiniLM-L6-v2'),
-        chunk_size=5
-    )
-    # Initialize Onward Journey Agent
-    oj_agent = OnwardJourneyAgent(
-               handoff_package=simulated_handoff_data,
-               embeddings=cont.get_embeddings(),
-               chunk_data=cont.get_chunks(),
-               embedding_model=cont.get_embedding_model(),
-               model_name=AWS_MODEL_ID, # Use the Bedrock model ID
-               aws_region=aws_region,   # Pass the AWS region
-               aws_role_arn=aws_role_arn,
-               temperature=0.0)
-
-    # Run a sample conversation
-    print("\n" + "-"*80)
-    print("Starting Interactive Chat...")
-    oj_agent.run_conversation()
-    print("-"*80 + "\n")
-    return
-def run_test_mode(path_to_knowledge_base, test_data_path, aws_role_arn: Optional[str], aws_region="eu-west-2", seed=1):
-    """
-    Initializes the Onward Journey Agent for mass testing and runs the test suite.
-    (Test Harness Mode).
+    Manages the configuration, setup, and execution modes (interactive and test)
+    for the Onward Journey Agent, ensuring reproducibility and consistent setup.
     """
 
-    # Set seeds for reproducibility
-    set_all_seeds(seed)
+    def __init__(self, llm_model_id: str, path_to_kb: str, path_to_test_data: str,
+                 aws_region: str, aws_role_arn : str, output_dir: str,
+                 seed: int = 0, vector_store_model_id: str = 'all-MiniLM-L6-v2', vector_store_chunk_size: int = 5):
+        """
+        Description: Initializes the manager with essential configuration parameters and sets seeds.
 
-    # Simulated handoff data for test harness mode
-    simulated_handoff_data = {
-        "handoff_agent_id": "Chatbot Agent",
-        "model_used": AWS_MODEL_ID,
-        "system_instruction_used": "Test mode.",
-        "final_conversation_history": [],
-        "next_agent_prompt": "Run Test Suite",
-        "status": "TESTING_MODE"
-    }
+        llm_model_id          : The ID of the language model (e.g., Anthropic Claude).
+        vector_store_model_id : The ID of the embedding model for the vector store.
+        path_to_kb            : File path to the knowledge base document.
+        path_to_test_data     : File path to the test data set.
+        aws_region            : AWS region for model deployment.
+        seed                  : Random seed for reproducibility.
+        """
 
-    # Initialize Data Container
-    cont = container(
-        file_path=path_to_knowledge_base,
-        embedding_model=SentenceTransformer('all-MiniLM-L6-v2'),
-        chunk_size=5
-    )
+        # llm model id
+        self.model_id                  = llm_model_id
 
-    # Initialize Onward Journey Agent (using temperature 0.0 for deterministic test results)
-    oj_agent = OnwardJourneyAgent(
-               handoff_package=simulated_handoff_data,
-               embeddings=cont.get_embeddings(),
-               chunk_data=cont.get_chunks(),
-               embedding_model=cont.get_embedding_model(),
-               model_name=AWS_MODEL_ID,
-               aws_region=aws_region,
-               aws_role_arn=aws_role_arn,
-               temperature=0.0)
+        # Knowledge base parameters
+        self.vector_store_model_id     = vector_store_model_id
+        self.vector_store_chunk_size   = vector_store_chunk_size
+        self.path_to_knowledge_base    = path_to_kb
 
-    # Delegate the testing and analysis to the test suite in test.py
-    test.run_mass_tests(oj_agent, test_data_path=test_data_path)
+        # aws parameters
+        self.aws_region                = aws_region
+        self.aws_role_arn              = aws_role_arn
 
-def main(run_mode, path_to_kb, test_data_path, aws_region_override=None, aws_role_arn: Optional[str] = None):
+        # dir of test data
+        self.path_to_test_data         = path_to_test_data
 
-    region_to_use = aws_region_override if aws_region_override else "eu-west-2"
+        self.seed                      = seed
+        self.output_dir                = output_dir
 
-    print(f"AWS Region set to: {region_to_use}")
+        self._set_all_seeds(self.seed)
 
-    if run_mode == 'interactive':
-        print("Running in INTERACTIVE Mode.")
-        run_interactive_mode(
-            path_to_knowledge_base=path_to_kb,
-            aws_region=region_to_use,
-            aws_role_arn=aws_role_arn
+    def __call__(self, run_mode: str, handoff_data: dict, proto_test_name: str = "prototype_one"):
+
+        oj_agent = self._initialize_agent(handoff_data=handoff_data, temperature=0.0)
+
+        if run_mode == 'interactive':
+            print("Running in INTERACTIVE Mode.")
+            oj_agent.run_conversation()
+        elif run_mode == 'test':
+            print('Running in TEST Mode.')
+            print(f"Executing Test Suite from: {self.path_to_test_data}")
+            test_queries = load_test_queries(self.path_to_test_data)
+            if not test_queries:
+                return
+            getattr(test, f"{proto_test_name}_test")(oj_agent, test_queries=test_queries, output_dir=self.output_dir)
+        else:
+            print(f"Error: Unknown run_mode '{run_mode}'. Use 'test' or 'interactive'.")
+
+        return
+
+    def _set_all_seeds(self, seed_value: int):
+        """
+        Sets the random seed for reproducibility across key libraries (Python, NumPy, PyTorch).
+        """
+        # Python built-in 'random' module
+        random.seed(seed_value)
+
+        # NumPy (used for array/matrix operations)
+        np.random.seed(seed_value)
+
+        # PyTorch
+        torch.manual_seed(seed_value)
+
+        # PyTorch GPU operations (if available)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed_value)
+            torch.cuda.manual_seed_all(seed_value) # For multiple GPUs
+
+            # for deterministic algorithms
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+
+    def _initialize_vector_store(self):
+        """
+        Returns the vector store of the onward journey knowledge base.
+        """
+        return vectorStore(
+            file_path=self.path_to_knowledge_base,
+            embedding_model=SentenceTransformer(self.vector_store_model_id),
+            chunk_size=self.vector_store_chunk_size
         )
-    elif run_mode == 'test':
-        print("Running in MASS TESTING Mode.")
-        run_test_mode(
-            path_to_knowledge_base=path_to_kb,
-            test_data_path=test_data_path,
-            aws_region=region_to_use,
-            aws_role_arn=aws_role_arn
-        )
-    else:
-        print(f"Error: Unknown run_mode '{run_mode}'. Use 'test' or 'interactive'.")
-    return
+    def _initialize_agent(self, handoff_data: dict, temperature: float) -> OnwardJourneyAgent:
+        """
+        Initializes and returns the OnwardJourneyAgent with common configuration.
+        """
+        vector_store = self._initialize_vector_store()
+        return OnwardJourneyAgent(
+                   handoff_package=handoff_data,
+                   vector_store_embeddings=vector_store.get_embeddings(),
+                   vector_store_embeddings_text_chunks=vector_store.get_chunks(),
+                   embedding_model=vector_store.get_embedding_model(),
+                   model_name=self.model_id,
+                   aws_region=self.aws_region,
+                   aws_role_arn=self.aws_role_arn,
+                   temperature=temperature)
 
+# Original command-line interface remains the entry point
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the Onward Journey Agent in interactive or testing mode using AWS Bedrock.")
 
@@ -154,26 +128,37 @@ if __name__ == "__main__":
                         help='Path to the knowledge base (e.g., CSV file) for RAG chunks.')
 
     # Optional argument for test data path (required only for 'test' mode)
-    parser.add_argument('--test_data', type=str, default='./test_queries.json',
-                        help='Path to the JSON file containing test queries and expected answers (required for "test" mode).')
+    parser.add_argument('--test_data_path', type=str, default='./test_queries.json',
+                        help='Path to the JSON/CSV file containing test queries and expected answers (required for "test" mode).')
 
     # Optional argument for overriding the AWS region
     parser.add_argument('--region', type=str, default="eu-west-2",
-                        help=f'AWS region to use for the Bedrock client (default: {"eu-west-2"}).')
+                        help=f'AWS region to use for the Bedrock client (default: eu-west-2).')
 
-    parser.add_argument('--role_arn', type=str, default=None, help="The ARN of the AWS role to assume for Bedrock calls if provided" )
+    parser.add_argument('--output_dir', type=str, required=True, help='Directory to save test outputs.')
+
+    parser.add_argument('--role_arn', type=str, default=None, help='AWS Role ARN for Bedrock access (if required).')
 
     args = parser.parse_args()
 
     # Ensure test_data path is provided if the mode is 'test'
-    if args.mode == 'test' and not args.test_data:
+    if args.mode == 'test' and not args.test_data_path:
+        # This error case is mitigated by the default value, but kept for robustness
+        # if the default were to be removed.
         parser.error("The --test_data argument is required when running in 'test' mode.")
 
-    # Call the main func
-    main(
-        run_mode=args.mode,
+    # Model ID is hardcoded in the original script
+    model_id = "anthropic.claude-3-7-sonnet-20250219-v1:0"
+
+    # Initialize the Manager
+    runner = AgentRunner(
+        llm_model_id=model_id,
         path_to_kb=args.kb_path,
-        test_data_path=args.test_data,
-        aws_region_override=args.region,
-        aws_role_arn=args.role_arn
+        path_to_test_data=args.test_data_path,
+        aws_region=args.region,
+        aws_role_arn = args.role_arn,
+        output_dir=args.output_dir
     )
+
+    # Execute the objects call method with the specified mode
+    runner(args.mode, handoff_data={}, proto_test_name="prototype_two")
