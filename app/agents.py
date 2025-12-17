@@ -17,7 +17,7 @@ class OnwardJourneyAgent:
                        vector_store_embeddings_text_chunks: list[str],
                        embedding_model : SentenceTransformer,
                        aws_role_arn: Optional[str] = None,
-                       model_name: str = 'gemini-2.5-flash',
+                       model_name: str = 'anthropic.claude-3-7-sonnet-20250219-v1:0',
                        aws_region: str = 'eu-west-2',
                        aws_role_session_name : str = 'onward-journey-inference',
                        temperature: float = 0.0,
