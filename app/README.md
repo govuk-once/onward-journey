@@ -10,12 +10,12 @@ The system uses local sentence transformers for generating embeddings and cosine
 
 The project is organized into the following Python files:
 
-| File Name | Description |
-| :--- | :--- |
-| `main.py` | Sets up the environment, loads data, initializes the agent, and runs a sample conversation loop. |
-| `agents.py` | Contains the `OnwardJourneyAgent` class, which handles LLM configuration, tool declaration, RAG implementation, and the interactive chat loop. |
-| `data.py` | Contains the `container` class and utility functions (`df_to_text_chunks`) for loading CSV data, chunking it, and generating embeddings. |
-| `preprocessing.py` | Contains utility functions for data preparation, specifically for transforming raw conversation logs into structured JSON formats. |
+| File Name          | Description                                                                                                                                    |
+| :----------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main.py`          | Sets up the environment, loads data, initializes the agent, and runs a sample conversation loop.                                               |
+| `agents.py`        | Contains the `OnwardJourneyAgent` class, which handles LLM configuration, tool declaration, RAG implementation, and the interactive chat loop. |
+| `data.py`          | Contains the `container` class and utility functions (`df_to_text_chunks`) for loading CSV data, chunking it, and generating embeddings.       |
+| `preprocessing.py` | Contains utility functions for data preparation, specifically for transforming raw conversation logs into structured JSON formats.             |
 
 ---
 
@@ -25,17 +25,19 @@ Follow these steps to set up and run the project locally.
 
 ### 1. Prerequisites
 
-* Make sure you have the repository pre-requisites from [the root README](../README.MD) installed.
-* **AWS Account** with configured **IAM credentials** (via CLI or environment variables).
-* Model Access Granted for the desired Claude model (e.g., Claude 3.5 Sonnet) in your target AWS region.
+- Make sure you have the repository pre-requisites from [the root README](../README.MD) installed.
+- **AWS Account** with configured **IAM credentials** (via CLI or environment variables).
+- Model Access Granted for the desired Claude model (e.g., Claude 3.5 Sonnet) in your target AWS region.
 
 ### 2. Data Preparation
 
 You will need a mock CSV file to simulate your internal data source for the RAG tool.
 
-Create a file named mock_rag_data.csv (or similar) in your project directory.
+Mock data source files should be added to `../mock_data`. This will ensure that the file is added as an object to the datasets S3 bucket following a Terraform build (for future prototyping use).
 
-Ensure it contains the columns expected by the df_to_text_chunks function in data.py: `uid`, `service_name`, `department`, `phone_number`, `topic`, `user_type`, `tags`, `url`, `last_update`, and `description`.
+`mock_rag_data.csv` has already been added to the `mock_data` folder.
+
+It contains the columns expected by the df_to_text_chunks function in data.py: `uid`, `service_name`, `department`, `phone_number`, `topic`, `user_type`, `tags`, `url`, `last_update`, and `description`.
 
 Example `mock` Structure:
 
@@ -55,15 +57,18 @@ uv run main.py --help
 ```
 
 #### A. Interactive Mode (Conversation Demo)
+
 Use this to see the agent handle the initial handoff and subsequent chat turns.
+(Run from ../onward-journey/app)
 
 ```shell
 uv run main.py interactive \
-    --kb_path path/to/your/mock_rag_data.csv \
-    --region eu-west-2
+    --kb_path ../mock_data/mock_rag_data.csv \
+    --region eu-west-2 \
 ```
 
 #### B. Testing Mode (Performance Analysis)
+
 Use this to run the agent against a suite of pre-defined queries and generate the performance report and confusion matrix plot.
 
 ```shell
@@ -77,13 +82,14 @@ uv run main.py test \
 
 ##### 1. Bedrock Integration (`agents.py`)
 
--  **Client Initialization**: The agent uses `boto3.client('bedrock-runtime', region_name=...)` for secure authentication and connection to the Bedrock service. You can pass the ARN of an IAM role to assume for calls to Bedrock via the `--role_arn` command line argument
+- **Client Initialization**: The agent uses `boto3.client('bedrock-runtime', region_name=...)` for secure authentication and connection to the Bedrock service. You can pass the ARN of an IAM role to assume for calls to Bedrock via the `--role_arn` command line argument
 
 - **Tool Declaration**: Functions are declared using the JSON Schema format required by Anthropic's models on Bedrock.
 
 - **Inference Pipeline**: The agent uses `client.invoke_model()` to send requests. The tool-use logic involves a multi-step loop where the agent sends the prompt, receives the tool call, executes the local Python `query_csv_rag` function, and sends the results back to Bedrock as a subsequent user message for final answer generation.
 
 ##### 2. RAG Implementation (`agents.py` and `data.py`)
+
 The RAG tool (query_csv_rag) remains the core component that operates locally to:
 
 - Encode the user query using `SentenceTransformer`.
