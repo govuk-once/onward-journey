@@ -25,7 +25,7 @@ def df_to_text_chunks(df, chunk_size=5):
 
     return chunks
 
-class container:
+class vectorStore:
     """
     Container class to load CSV data, process it into text chunks,
     and compute embeddings using a specified SentenceTransformer model.
