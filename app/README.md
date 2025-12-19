@@ -62,9 +62,7 @@ Use this to see the agent handle the initial handoff and subsequent chat turns.
 (Run from ../onward-journey/app)
 
 ```shell
-uv run main.py interactive \
-    --kb_path ../mock_data/mock_rag_data.csv \
-    --region eu-west-2 \
+uv run main.py interactive
 ```
 
 #### B. Testing Mode (Performance Analysis)
