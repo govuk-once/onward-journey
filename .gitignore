@@ -214,3 +214,6 @@ infrastructure/environments/*.config
 
 # Ignore local tfvars files
 infrastructure/local.auto.tfvars
+
+# zsh
+.zshrc
