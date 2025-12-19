@@ -159,7 +159,7 @@ if __name__ == "__main__":
         "--kb_path",
         type=str,
         default=DEFAULT_KB_PATH,
-        help="Path to the knowledge base (default: {DEFAULT_KB_PATH}) for RAG chunks.",
+        help=f"Path to the knowledge base (default: {DEFAULT_KB_PATH}) for RAG chunks.",
     )
 
     # Optional argument for test data path (required only for 'test' mode)
