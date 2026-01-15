@@ -2,6 +2,7 @@ import random
 import numpy as np
 import torch
 import argparse 
+import os 
 
 from data                        import vectorStore
 from agents                      import OnwardJourneyAgent 
@@ -11,6 +12,9 @@ import test
 
 def default_handoff():
     return {'handoff_agent_id': 'GOV.UK Chat', 'final_conversation_history': []}
+
+SCRIPT_DIR      = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_KB_PATH = os.path.join(SCRIPT_DIR, "../mock_data/mock_rag_data.csv")
 
 class AgentRunner:
     """
@@ -143,8 +147,8 @@ def get_args(parser):
                         help='The run mode: "interactive" for chat, or "test" for mass testing.')
     
     # Required argument for knowledge base path
-    parser.add_argument('--kb_path', type=str, required=True, 
-                        help='Path to the knowledge base (e.g., CSV file) for RAG chunks.')
+    parser.add_argument('--kb_path', type=str, required=True, default=DEFAULT_KB_PATH, 
+                        help=f"Path to the knowledge base (default: {DEFAULT_KB_PATH}) for RAG chunks.")
     
     # Optional argument for test data path (required only for 'test' mode)
     parser.add_argument('--test_data_path', type=str, default='./test_queries.json',
