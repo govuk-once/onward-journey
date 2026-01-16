@@ -3,27 +3,33 @@ import numpy as np
 import boto3
 
 from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers    import SentenceTransformer
+from sentence_transformers import SentenceTransformer
 
 from typing import List, Dict, Any, Optional
+
+from candidate_scorer import CandidateConfig, CandidateScorer
+from slot_state import SlotState
 
 class OnwardJourneyAgent:
     """
     Agent designed to take a handoff package, initialize with specialized tools/data,
     and immediately continue the user's journey based on the previous context.
     """
-    def __init__(self, handoff_package: dict,
-                       vector_store_embeddings : np.ndarray,
-                       vector_store_embeddings_text_chunks: list[str],
-                       embedding_model : SentenceTransformer,
-                       aws_role_arn: Optional[str] = None,
-                       model_name: str = 'anthropic.claude-3-7-sonnet-20250219-v1:0',
-                       aws_region: str = 'eu-west-2',
-                       aws_role_session_name : str = 'onward-journey-inference',
-                       temperature: float = 0.0,
-                       verbose: bool = False,
-                       seed: int = 1,
-                       top_K: int = 3):
+    def __init__(
+        self,
+        handoff_package: dict,
+        vector_store_embeddings: np.ndarray,
+        vector_store_embeddings_text_chunks: list[str],
+        embedding_model: SentenceTransformer,
+        aws_role_arn: Optional[str] = None,
+        model_name: str = 'anthropic.claude-3-7-sonnet-20250219-v1:0',
+        aws_region: str = 'eu-west-2',
+        aws_role_session_name: str = 'onward-journey-inference',
+        temperature: float = 0.0,
+        verbose: bool = False,
+        seed: int = 1,
+        top_K: int = 3
+    ):
 
         # declare tools for bedrock
         self._tool_declarations()
@@ -33,42 +39,70 @@ class OnwardJourneyAgent:
 
         # Clarification finite state
         self.awaiting_clarification: bool = False
+        self.clarification_attempts: int = 0
+        self.max_clarification_attempts: int = 1
+        self.pending_candidates: List[Dict[str, Any]] = []
+        self.slot_state = SlotState()
 
         # Model configuration
-        self.model_name      = model_name
-        self.temperature     = temperature
+        self.model_name = model_name
+        self.temperature = temperature
 
         # Store the handoff package for processing
         self.handoff_package = handoff_package
 
         # Define available tools and their names
         self.specialized_tools = [self.query_csv_rag]
-        self.available_tools   = {f.__name__: f for f in self.specialized_tools}
-        self.top_K             = top_K
+        self.available_tools = {f.__name__: f for f in self.specialized_tools}
+        self.top_K = top_K
 
 
         # Accessibility to vector store embeddings, vector store text chunk equivalents and vector store embedding model to embed user queries
-        self.embeddings      = vector_store_embeddings
-        self.chunk_data      = vector_store_embeddings_text_chunks
+        self.embeddings = vector_store_embeddings
+        self.chunk_data = vector_store_embeddings_text_chunks
         self.embedding_model = embedding_model
+        self.candidate_config = CandidateConfig(
+            ambiguity_similarity_gap=0.05,
+            strong_candidate_threshold=0.35,
+            confident_score_threshold=0.55,
+            confident_margin_threshold=0.15,
+            weak_candidate_floor=0.25,
+            top_k=top_K,
+        )
+        self.candidate_scorer = CandidateScorer(
+            embeddings=self.embeddings,
+            chunk_data=self.chunk_data,
+            embedding_model=self.embedding_model,
+            config=self.candidate_config,
+        )
 
         # Seed for reproducibility
-        self.seed            = seed
+        self.seed = seed
 
         # Specialized System Instruction for onward journey agent
         self.system_instruction = (
-                    "You are the **Onward Journey Agent**. Your sole purpose is to process "
-                    "and complete the user's request. **Your priority is correctness.** "
-                    "1. **Ambiguity Check:** If the user's request is ambiguous or requires a specific detail (e.g., 'Tax Credits'), your first turn **MUST BE A TEXT RESPONSE** asking a single, specific clarifying question. **DO NOT CALL THE TOOL YET.** "
-                    "2. **Tool Use:** If the request is clear, OR if the user has just provided the clarification, you must call the `query_csv_rag` tool to find the answer. "
-                    "3. **Final Answer:** After the tool call is complete, provide the final, grounded answer." \
-                    "Make sure your responses are formatted well for the user to read."
-                                  )
+            "You are the **Onward Journey Agent**. Your sole purpose is to process "
+            "and complete the user's request. **Your priority is correctness.** "
+            "Slot schema to fill from the conversation: service_name, department, user_type, tags. "
+            "The phone_number is what you must return from the data. "
+            "If a single high-confidence match is identified (see Confidence hints), skip clarifying questions and call the tool immediately. "
+            "If there is one obvious match, answer directly with the number; only ask when two or more are plausible. "
+            "1. **Ambiguity Check:** If the request is ambiguous or any slot is missing, your first turn **MUST BE A TEXT RESPONSE** asking one friendly but direct clarifying question. **DO NOT CALL THE TOOL YET.** "
+            "2. **Tool Use:** If the request is clear, OR the user has just clarified, call the `query_csv_rag` tool to find the answer. "
+            "3. **Ambiguity After Retrieval:** If tool results show multiple plausible services, ask one short disambiguation question before giving the number. "
+            "4. **Final Answer:** After the tool call is complete, provide the final, grounded answer with the phone number and key service/department context. "
+            "Limit to 3 clarification turns and avoid assumptions. Make sure your responses are formatted well for the user to read. "
+            "Reference patterns: "
+            "Example 1 (clear): User: 'I lost my passport, need the contact number.' Assistant: (skip clarifications, call tool, return number with brief context). "
+            "Example 2 (ambiguous topic): User: 'I need help with housing.' Assistant: 'Is this for social housing or homelessness support?' then call tool and answer. "
+            "Example 3 (region disambiguation): User: 'I have a question for the education department.' Assistant: 'Are you based in England or Northern Ireland? That decides which contact to give you.' then call tool and answer. "
+            "Example 4 (concise clarification then answer): User: 'General questions for DfE.' Assistant: 'Are you contacting DfE in England or Northern Ireland?' User: 'England.' Assistant: (call tool) 'Department for Education (England) — General enquiries phone: 0370 000 2288.'"
+        )
         # Verbosity for debugging
         self.verbose = verbose
 
         # Initialize conversation history
-        self.history: List[Dict[str, Any]] = [  ]
+        self.history: List[Dict[str, Any]] = []
 
     def _initialise_aws(self, aws_region: str, role_arn: Optional[str], role_session_name: str):
         if role_arn != None:
@@ -125,23 +159,47 @@ class OnwardJourneyAgent:
         return
 
     def _add_to_history(self, role: str, content: Optional[str] = None, tool_calls: Optional[List[Dict]] = None, tool_results: Optional[List[Dict]] = None):
-            """Adds a message to the internal history list in Bedrock format."""
-            message: Dict[str, Any] = {"role": role, "content": []}
+        """Adds a message to the internal history list in Bedrock format."""
+        message: Dict[str, Any] = {"role": role, "content": []}
 
-            if content:
-                message['content'].append({"type": "text", "text": content})
+        if content:
+            message['content'].append({"type": "text", "text": content})
 
-            if tool_calls:
-                for call in tool_calls:
-                    message['content'].append(call)
+        if tool_calls:
+            for call in tool_calls:
+                message['content'].append(call)
 
-            if tool_results:
-                for result in tool_results:
-                    message['content'].append(result)
+        if tool_results:
+            for result in tool_results:
+                message['content'].append(result)
 
-            # Only append messages that have actual content
-            if message['content']:
-                self.history.append(message)
+        # Only append messages that have actual content
+        if message['content']:
+            self.history.append(message)
+
+    def _reset_clarification_state(self) -> None:
+        """Clears clarification flags when we have enough info to proceed."""
+        self.awaiting_clarification = False
+        self.clarification_attempts = 0
+        self.pending_candidates = []
+
+    def _format_best_guess_response(self, candidate: Dict[str, str], prompt: str) -> str:
+        """
+        Build a grounded response from the top candidate when clarifications are exhausted.
+        """
+        self.slot_state.update_from_candidate(candidate)
+        service = candidate.get("service_name") or "the service"
+        dept = candidate.get("department")
+        phone = candidate.get("phone_number") or "phone number not available"
+        url = candidate.get("url")
+        summary_parts = [f"I'll use the best match based on what you shared: {service}."]
+        if dept:
+            summary_parts.append(f"Department: {dept}.")
+        summary_parts.append(f"Phone: {phone}.")
+        if url:
+            summary_parts.append(f"URL: {url}.")
+        summary_parts.append("If this looks off, let me know and I can adjust.")
+        return " ".join(summary_parts)
 
     def _send_message_and_handle_tools(self, prompt: str) -> str:
         """
@@ -155,15 +213,42 @@ class OnwardJourneyAgent:
             self.awaiting_clarification = False
             if self.verbose:
                 print("Clarification received from user. Proceeding to tool call.")
+                if self.pending_candidates:
+                    selected = self.candidate_scorer.select_candidate_from_clarification(prompt, self.pending_candidates)
+                    if selected:
+                        self.slot_state.update_from_candidate(selected)
+                        if self.verbose:
+                            print(f"Applied clarification to select candidate: {selected.get('service_name','')}")
+
+        candidates: List[Dict[str, Any]] = []
+        confidence_hint: Optional[str] = None
+        # Pre-emptive disambiguation based on nearest candidates (friendly but direct)
+        if not self.awaiting_clarification and self.clarification_attempts < self.max_clarification_attempts:
+            candidates = self.candidate_scorer.get_top_candidates(prompt, top_n=max(self.top_K, 3))
+            if candidates and not self.candidate_scorer.needs_disambiguation(candidates):
+                self.slot_state.update_from_candidate(candidates[0])
+            confidence_hint = self.candidate_scorer.build_confidence_hint(candidates)
+            question = self.candidate_scorer.build_disambiguation_question(candidates, self.slot_state.slots)
+            if question:
+                if self.verbose:
+                    print("Pre-emptive ambiguity detected from vector store. Asking for clarification.")
+                self.awaiting_clarification = True
+                self.clarification_attempts += 1
+                self.pending_candidates = candidates
+                self._add_to_history(role="assistant", content=question)
+                return question
 
         response_text = ""
         # The loop condition is based on whether the last model response contained tool use
         while True:
+            system_with_slots = f"{self.system_instruction}\n{self.slot_state.status_text()}"
+            if confidence_hint:
+                system_with_slots += f"\nConfidence: {confidence_hint}"
             # Prepare the request body for the Bedrock API
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
                 "messages": self.history,
-                "system": self.system_instruction,
+                "system": system_with_slots,
                 "max_tokens": 4096,
                 "temperature": self.temperature,
                 "tools": self.bedrock_tools,
@@ -195,6 +280,16 @@ class OnwardJourneyAgent:
                 if self.verbose:
                     print("Onward Journey Agent detects ambiguity. Returning clarification question.")
                 self.awaiting_clarification = True
+                self.clarification_attempts += 1
+                if self.clarification_attempts > self.max_clarification_attempts:
+                    if self.verbose:
+                        print("Max clarification attempts reached; proceeding with best guess.")
+                    self.awaiting_clarification = False
+                    candidates = self.pending_candidates or self.candidate_scorer.get_top_candidates(prompt, top_n=max(self.top_K, 3))
+                    if candidates:
+                        chosen = self.candidate_scorer.select_candidate_from_clarification(prompt, candidates) or candidates[0]
+                        return self._format_best_guess_response(chosen, prompt)
+                    return text_content
                 return text_content
             if not tool_calls:
                 response_text = text_content if text_content else "I couldn't generate a response."
@@ -204,9 +299,9 @@ class OnwardJourneyAgent:
             tool_results_for_history = []
 
             for call in tool_calls:
-                tool_use_id   = call['id'] # Unique ID for this tool use
-                function_name = call['name'] # The tool to call
-                args          = call['input'] # 'input' holds the arguments for the tool
+                tool_use_id = call['id']  # Unique ID for this tool use
+                function_name = call['name']  # The tool to call
+                args = call['input']  # 'input' holds the arguments for the tool
 
                 if self.verbose:
                     print(f"Onward Journey requests tool call: {function_name}({args})")
@@ -240,6 +335,7 @@ class OnwardJourneyAgent:
 
             # Add the tool results to history and continue the loop for the next LLM turn
             self._add_to_history(role="user", tool_results=tool_results_for_history)
+            self._reset_clarification_state()
 
             # Loop continues: The next iteration of the while loop sends the history
             # including the tool results back to the model.
@@ -325,12 +421,21 @@ class OnwardJourneyAgent:
 
         # 3. Augment Context
         retrieved_chunks = [self.chunk_data[i] for i in top_indices]
+        structured_results = []
+        for i in top_indices:
+            record = self.candidate_scorer.parse_chunk_to_record(self.chunk_data[i])
+            record["score"] = float(similarity_scores[i])
+            structured_results.append(record)
 
         # 4. Return Context for LLM Generation
         context_string = "\n".join(retrieved_chunks)
+        structured_payload = {
+            "top_matches": structured_results,
+            "slots": self.slot_state.slots,
+        }
 
         # The model receives this context and uses it to answer the user_query
-        return f"Retrieved Context:\n{context_string}"
+        return f"Retrieved Context:\n{context_string}\n\nStructured:\n{json.dumps(structured_payload)}"
 
     def get_forced_response(self, user_query: str) -> str:
             """

@@ -16,21 +16,15 @@ def process_conversations(df):
     # --- 1. Rename the complex column for easier access ---
     # The original column name is long and contains special characters, making it awkward to use.
     # The new column name 'llm_answer' is used in the turn structure for consistency.
-    df.rename(columns={'answer - as shown to user': 'llm_answer'}, inplace=True)
+    df = df.rename(columns={'answer - as shown to user': 'llm_answer'})
 
-    # --- 2. Create Grouping Key ---
-    # A conversation starts every time 'seq_num' is 1 (the first turn of a new chat session).
-    # (df['seq_num'] == 1) creates a boolean Series (True/False).
-    # .cumsum() converts True (1) and False (0) to cumulative sums.
-    # This generates a unique ID for each conversation group: 1, 1, 1, 2, 2, 3, 3, 3, ...
-    df['conversation_group_id'] = (df['seq_num'] == 1).cumsum()
-
+    # --- 2. Sort and group by session_id to keep turns together ---
+    df = df.sort_values(by=['session_id', 'seq_num'])
     final_conversations_dict = {}
-    # Group the DataFrame by the newly created unique conversation ID
-    grouped = df.groupby('conversation_group_id')
+    grouped = df.groupby('session_id', sort=False)
 
     # --- 3. Iterate, Transform, and Construct the Final Dictionary ---
-    for group_id, group_df in grouped:
+    for session_id, group_df in grouped:
 
         # 3a. Prepare the list of turns/interactions
         turns = []
@@ -50,14 +44,13 @@ def process_conversations(df):
         conversation_data = {
             # Take the first value for user_id and session_id as they are constant for the group
             'user_id': group_df['user_id'].iloc[0],
-            'session_id': group_df['session_id'].iloc[0],
+            'session_id': session_id,
             'turns': turns # The list of turns created above
         }
 
         # 3c. Build the key and add to the final dictionary
-        # Key format: CONV_1, CONV_2, etc.
-        conversation_key = f"CONV_{group_id}"
-        final_conversations_dict[conversation_key] = conversation_data
+        # Keyed by session_id to retain upstream grouping identifier.
+        final_conversations_dict[session_id] = conversation_data
 
     return final_conversations_dict
 
@@ -163,7 +156,7 @@ def process_and_save_data(raw_data_dir, grouped_json_base_dir, individual_json_b
         # 2. Extract the unique identifier from the filename
         # Assumes the ID is the segment after the last hyphen and before '.csv'.
         # e.g., 'data-20231026.csv' -> splits to ['data', '20231026.csv'] -> takes '20231026.csv' -> splits to ['20231026'] -> takes '20231026'
-        file_id = file.split(".csv")[0].split('-')[-1]
+        file_id = file.split(".csv")[0].split('-')[-1].strip()
 
         # --- Load CSV and Process Conversations ---
         print(f"\nProcessing file: {file}...")

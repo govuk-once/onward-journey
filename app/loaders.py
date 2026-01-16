@@ -55,6 +55,8 @@ def load_test_queries(file_path: str) -> list[dict]:
     # Final Standardization Step (Applied to all loaded cases)
     for case in test_cases:
         case['expected_phone_number'] = extract_and_standardize_phone(case['expected_phone_number'])
+        case.setdefault('is_ambiguous', False)
+        case.setdefault('simulated_clarification_response', 'N/A')
 
     return test_cases
 
