@@ -7,7 +7,7 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
-		"prepare": "svelte-kit sync || echo ''",
+		"prepare": "make prepare || svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
 	},
@@ -24,5 +24,9 @@
 	"engines": {
 		"node": ">= 25",
 		"npm": "^11.6.2"
+	},
+	"dependencies": {
+		"govuk-frontend": "^5.14.0",
+		"sass": "^1.97.2"
 	}
 }
