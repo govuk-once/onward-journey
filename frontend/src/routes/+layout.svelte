@@ -5,6 +5,12 @@
 	let { children } = $props();
 </script>
 
+<style>
+	.service-name {
+		margin-right: 10px;
+	}
+</style>
+
 <svelte:head>
 	<link rel="icon" href={favicon} />
 </svelte:head>
@@ -12,7 +18,7 @@
 <header class="govuk-header" data-module="govuk-header">
   <div class="govuk-header__container govuk-width-container">
     <div class="govuk-header__logo">
-      <a href="#" class="govuk-header__link govuk-header__link--homepage">
+      <a href="/" class="govuk-header__link govuk-header__link--homepage">
         <svg
           focusable="false"
           role="img"
@@ -41,15 +47,21 @@
   </div>
 </header>
 
-<div class="govuk-phase-banner">
-  <p class="govuk-phase-banner__content">
-    <strong class="govuk-tag govuk-phase-banner__content__tag">
-      Experimental
-    </strong>
-    <span class="govuk-phase-banner__text">
-      This service is an experimental prototype.
-    </span>
-  </p>
-</div>
+<section aria-label="Service information" class="govuk-service-navigation"
+  data-module="govuk-service-navigation">
+  <div class="govuk-width-container">
+    <div class="govuk-service-navigation__container">
+      <span class="govuk-service-navigation__service-name">
+        <a href="/" class="govuk-service-navigation__link service-name">
+          GOV.UK Agents Onward Journey
+        </a>
+				<span class="govuk-tag govuk-tag--yellow">
+					Experimental
+				</span>
+      </span>
+
+    </div>
+  </div>
+</section>
 
 {@render children()}

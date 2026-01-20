@@ -7,7 +7,8 @@ export default defineConfig({
 		preprocessorOptions: {
 			scss: {
 				loadPaths: ['node_modules'],
-				quietDeps: true
+				quietDeps: true,
+				silenceDeprecations: ['import']
 			}
 		}
 	}
