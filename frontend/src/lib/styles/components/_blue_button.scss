@@ -1,0 +1,41 @@
+// Copied from https://github.com/alphagov/govuk-chat/blob/2a5b2f5c5d97c7f328fd5613ce4d2dc8c5495519/app/assets/stylesheets/components/_blue-button.scss
+
+@import "govuk-frontend/dist/govuk/components/button/button";
+
+.app-c-blue-button {
+  background-color: govuk-colour("blue");
+  box-shadow: 0 2px 0 govuk-shade(govuk-colour("blue"), 60%);
+  margin-bottom: 0;
+
+  &:hover, &:disabled:hover {
+    background-color: govuk-shade(govuk-colour("blue"), 20%);
+  }
+}
+
+.app-c-blue-button--question-form {
+  border: none;
+  box-shadow: inset 0 -2px 0 govuk-shade(govuk-colour("blue"), 60%);
+  flex: 1;
+  // We need the input field and the button to be the same height.
+  // The input field has padding of 10px and a border of 2px, so we have to
+  // apply that same amount of padding to the button
+  padding: 12px;
+  @include govuk-font($size: 19, $weight: bold);
+
+  &:focus {
+    box-shadow: inset 0 0 0 2px $govuk-focus-colour;
+  }
+
+  &:focus:not(:active):not(:hover) {
+    box-shadow: inset 0 -2px 0 $govuk-focus-text-colour;
+  }
+
+  &.app-c-blue-button--disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+
+    &:active {
+      top: 0;
+    }
+  }
+}

@@ -8,8 +8,6 @@
 	let { message, user, isSelf = true }: Props = $props();
 </script>
 
-<!-- TODO: fix vertical padding for this component-->
-
 <li class="app-c-conversation-message">
 	<div class="app-c-conversation-message__message {isSelf ? 'app-c-conversation-message__message--user-message' : 'app-c-conversation-message__message--govuk-message'}">
 		<div class="app-c-conversation-message__body {isSelf ? 'app-c-conversation-message__body--user-message' : 'app-c-conversation-message__body--govuk-message'}">
@@ -18,7 +16,7 @@
 				<strong>{user}</strong>
 			</div>
 			{/if}
-			<div class="govuk-body-m">{message}</div>
+			<div class="govuk-body-m govuk-!-margin-bottom-0">{message}</div>
 		</div>
 	</div>
 </li>
