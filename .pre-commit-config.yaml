@@ -12,3 +12,17 @@ repos:
   hooks:
     - id: terraform_fmt
     - id: terraform_tflint
+- repo: local
+  hooks:
+    - id: frontend-lint
+      name: ESLint (frontend)
+      entry: bash -c 'cd frontend && npm run lint'
+      language: system
+      files: ^frontend/
+      pass_filenames: false
+    - id: frontend-svelte-check
+      name: SvelteKit Check (frontend)
+      entry: bash -c 'cd frontend && npm run check'
+      language: system
+      files: ^frontend/
+      pass_filenames: false
