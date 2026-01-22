@@ -6,8 +6,8 @@
 	<div class="app-conversation-layout__wrapper app-conversation-layout__width-restrictor">
 		<div class="app-conversation-layout__message-container">
 			<ul id="app-conversation-layout__list">
-				<ConversationMessage message="Hello" user={"GOV.UK Onward Journey Agent"} isSelf={false} />
-				<ConversationMessage message="I would like to talk to someone" user={"You"} isSelf={true} />
+				<ConversationMessage message="Hello" user="GOV.UK Onward Journey Agent" isSelf={false} />
+				<ConversationMessage message="I would like to talk to someone" user="You" isSelf={true} />
 			</ul>
 		</div>
 

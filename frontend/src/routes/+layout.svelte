@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from "$app/paths";
 	import favicon from "$lib/assets/favicon.svg";
 	import "../app.scss";
 
@@ -18,7 +19,7 @@
 <header class="govuk-header" data-module="govuk-header">
   <div class="govuk-header__container govuk-width-container">
     <div class="govuk-header__logo">
-      <a href="/" class="govuk-header__link govuk-header__link--homepage">
+      <a href={resolve("/")} class="govuk-header__link govuk-header__link--homepage">
         <svg
           focusable="false"
           role="img"
@@ -52,7 +53,7 @@
   <div class="govuk-width-container">
     <div class="govuk-service-navigation__container">
       <span class="govuk-service-navigation__service-name">
-        <a href="/" class="govuk-service-navigation__link service-name">
+        <a href={resolve("/")} class="govuk-service-navigation__link service-name">
           GOV.UK Agents Onward Journey
         </a>
 				<span class="govuk-tag govuk-tag--yellow">
