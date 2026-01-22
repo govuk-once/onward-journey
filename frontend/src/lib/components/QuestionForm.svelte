@@ -1,15 +1,33 @@
+<script lang="ts">
+  import type { Props as ConversationMessageProps } from "$lib/components/ConversationMessage.svelte";
+
+  interface Props {
+    messages: ConversationMessageProps[]
+  }
+
+  let { messages = $bindable() }: Props = $props()
+  let message = $state("")
+</script>
+
 <div class="app-conversation-layout__form-region">
   <div class="app-c-question-form">
-    <form class="app-c-question-form__form">
+    <form class="app-c-question-form__form" onsubmit={() => {
+      messages.push({
+        message,
+        user: "You",
+        isSelf: true
+      })
+      message = ""
+    }}>
 
       <div class="app-c-question-form__form-group">
         <div class="app-c-question-form__textarea-wrapper">
-          <textarea class="app-c-question-form__textarea" name="message" placeholder="Enter your question or message" rows=1></textarea>
+          <textarea class="app-c-question-form__textarea" name="message" placeholder="Enter your question or message" rows=1 bind:value={message}></textarea>
         </div>
         <div class="app-c-question-form__button-wrapper">
-          <div class="app-c-blue-button govuk-button app-c-blue-button--question-form">
+          <button class="app-c-blue-button govuk-button app-c-blue-button--question-form">
             Start
-          </div>
+          </button>
         </div>
       </div>
     </form>

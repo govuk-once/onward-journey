@@ -1,5 +1,5 @@
 <script lang="ts">
-	interface Props {
+	export interface Props {
 		message: string;
 		user?: string;
 		isSelf: boolean;

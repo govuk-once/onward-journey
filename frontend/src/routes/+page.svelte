@@ -1,18 +1,28 @@
 <script lang="ts">
-	import ConversationMessage from "$lib/components/ConversationMessage.svelte";
+	import type { Props as ConversationMessageProps } from "$lib/components/ConversationMessage.svelte";
   import ConversationMessageContainer from "$lib/components/ConversationMessageContainer.svelte";
   import QuestionForm from "$lib/components/QuestionForm.svelte";
+
+	let messages: ConversationMessageProps[] = $state([
+		{
+			message: "Hello",
+			user: "GOV.UK Onward Journey Agent",
+			isSelf: false
+		},
+		{
+			message: "I would like to talk to someone",
+			user: "You",
+			isSelf: true
+		}
+	]);
 </script>
 
 <main class="app-conversation-layout__main" id="main-content">
 	<div class="app-conversation-layout__wrapper app-conversation-layout__width-restrictor">
-		<ConversationMessageContainer>
-			<ConversationMessage message="Hello" user="GOV.UK Onward Journey Agent" isSelf={false} />
-			<ConversationMessage message="I would like to talk to someone" user="You" isSelf={true} />
-		</ConversationMessageContainer>
+		<ConversationMessageContainer messages={messages}/>
 
-
-		<!-- TODO hook up an action to this from which just displays the user message on the page -->
-		<QuestionForm />
+		<!-- For now, this simply adds adds a message to the page when submitted
+		 		 TODO: connect to genesys web messaging guest API and send the message there -->
+		<QuestionForm bind:messages={messages}/>
 	</div>
 </main>
