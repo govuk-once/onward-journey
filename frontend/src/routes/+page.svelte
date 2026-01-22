@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Props as ConversationMessageProps } from "$lib/components/ConversationMessage.svelte";
+  import type { Props as ConversationMessageProps } from "$lib/components/ConversationMessage.svelte";
   import ConversationMessageContainer from "$lib/components/ConversationMessageContainer.svelte";
   import QuestionForm from "$lib/components/QuestionForm.svelte";
 
