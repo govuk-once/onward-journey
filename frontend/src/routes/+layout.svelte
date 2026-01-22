@@ -13,7 +13,7 @@
 </style>
 
 <svelte:head>
-	<link rel="icon" href={"/assets/rebrand/images/favicon.svg"} />
+	<link rel="icon" href="/assets/rebrand/images/favicon.svg" />
 </svelte:head>
 
 <header class="govuk-header" data-module="govuk-header">
