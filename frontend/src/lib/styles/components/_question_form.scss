@@ -1,6 +1,6 @@
 // Copied from https://github.com/alphagov/govuk-chat/blob/2a5b2f5c5d97c7f328fd5613ce4d2dc8c5495519/app/assets/stylesheets/components/_question-form.scss
 
-@import "govuk-frontend/dist/govuk/components/error-message";
+@import "govuk/components/error-message";
 
 .app-c-question-form__form {
   padding-top: govuk-spacing(3);

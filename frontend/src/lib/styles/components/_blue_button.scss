@@ -1,6 +1,6 @@
 // Copied from https://github.com/alphagov/govuk-chat/blob/2a5b2f5c5d97c7f328fd5613ce4d2dc8c5495519/app/assets/stylesheets/components/_blue-button.scss
 
-@import "govuk-frontend/dist/govuk/components/button/button";
+@import "govuk/components/button/button";
 
 .app-c-blue-button {
   background-color: govuk-colour("blue");
