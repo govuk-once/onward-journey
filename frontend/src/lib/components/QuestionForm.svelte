@@ -1,24 +1,18 @@
 <script lang="ts">
-  import type { ListableConversationMessageProps } from "$lib/types/ConversationMessage";
-  import { v7 as uuid } from "uuid";
+  export type SendMessageHandler = (message: string) => void;
 
   interface Props {
-    messages: ListableConversationMessageProps[]
+    messageHandler: SendMessageHandler
   }
 
-  let { messages = $bindable() }: Props = $props()
+  let { messageHandler }: Props = $props()
   let message = $state("")
 </script>
 
 <div class="app-conversation-layout__form-region">
   <div class="app-c-question-form">
     <form class="app-c-question-form__form" onsubmit={() => {
-      messages.push({
-        message,
-        user: "You",
-        isSelf: true,
-        id: uuid()
-      })
+      messageHandler(message)
       message = ""
     }}>
 
