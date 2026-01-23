@@ -9,12 +9,14 @@ from sentence_transformers import SentenceTransformer
 import test
 from agents import OnwardJourneyAgent
 from data import vectorStore
+from memory_store import MemoryStore, JsonMemoryStore
 from loaders import load_test_queries
 
 
 # Calculate the default path to the mock data relative to this script (main.py)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_KB_PATH = os.path.join(SCRIPT_DIR, "../mock_data/mock_rag_data.csv")
+DEFAULT_MEMORY_PATH = os.path.join(SCRIPT_DIR, "output", "memory.json")
 
 
 class AgentRunner:
@@ -34,6 +36,11 @@ class AgentRunner:
         seed: int = 0,
         vector_store_model_id: str = "all-MiniLM-L6-v2",
         vector_store_chunk_size: int = 5,
+        memory_store_type: str = "in_memory",
+        memory_k: int = 5,
+        memory_max_items: int = 50,
+        session_id: str = "default-session",
+        memory_path: str = DEFAULT_MEMORY_PATH,
     ):
         """
         Description: Initializes the manager with essential configuration parameters and sets seeds.
@@ -63,6 +70,13 @@ class AgentRunner:
 
         self.seed = seed
         self.output_dir = output_dir
+
+        # memory configuration
+        self.memory_store_type = memory_store_type
+        self.memory_k = memory_k
+        self.memory_max_items = memory_max_items
+        self.session_id = session_id
+        self.memory_path = memory_path
 
         self._set_all_seeds(self.seed)
 
@@ -128,6 +142,18 @@ class AgentRunner:
         Initializes and returns the OnwardJourneyAgent with common configuration.
         """
         vector_store = self._initialize_vector_store()
+        memory_store = None
+        if self.memory_store_type == "in_memory":
+            memory_store = MemoryStore(
+                embedding_model=vector_store.get_embedding_model(),
+                max_items_per_session=self.memory_max_items,
+            )
+        elif self.memory_store_type == "json":
+            memory_store = JsonMemoryStore(
+                embedding_model=vector_store.get_embedding_model(),
+                file_path=self.memory_path,
+                max_items_per_session=self.memory_max_items,
+            )
         return OnwardJourneyAgent(
             handoff_package=handoff_data,
             vector_store_embeddings=vector_store.get_embeddings(),
@@ -137,6 +163,9 @@ class AgentRunner:
             aws_region=self.aws_region,
             aws_role_arn=self.aws_role_arn,
             temperature=temperature,
+            memory_store=memory_store,
+            session_id=self.session_id,
+            memory_k=self.memory_k,
         )
 
 
@@ -192,6 +221,42 @@ if __name__ == "__main__":
         help="AWS Role ARN for Bedrock access (if required).",
     )
 
+    parser.add_argument(
+        "--memory_store",
+        type=str,
+        choices=["none", "in_memory", "json"],
+        default="json",
+        help="Memory backend: none, in-memory only, or JSON file.",
+    )
+
+    parser.add_argument(
+        "--memory_k",
+        type=int,
+        default=5,
+        help="Top-k memory snippets to retrieve per turn.",
+    )
+
+    parser.add_argument(
+        "--memory_max_items",
+        type=int,
+        default=50,
+        help="Maximum stored memory entries per session (evicts oldest).",
+    )
+
+    parser.add_argument(
+        "--session_id",
+        type=str,
+        default="default-session",
+        help="Session identifier used for memory scoping.",
+    )
+
+    parser.add_argument(
+        "--memory_path",
+        type=str,
+        default=DEFAULT_MEMORY_PATH,
+        help=f"Path for JSON memory store (default: {DEFAULT_MEMORY_PATH}).",
+    )
+
     args = parser.parse_args()
 
     # Ensure test_data path is provided if the mode is 'test'
@@ -213,6 +278,11 @@ if __name__ == "__main__":
         aws_region=args.region,
         aws_role_arn=args.role_arn,
         output_dir=args.output_dir,
+        memory_store_type=args.memory_store,
+        memory_k=args.memory_k,
+        memory_max_items=args.memory_max_items,
+        session_id=args.session_id,
+        memory_path=args.memory_path,
     )
 
     # Execute the objects call method with the specified mode

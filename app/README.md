@@ -105,3 +105,12 @@ The RAG tool (query_csv_rag) remains the core component that operates locally to
 - **First Response**: The Bedrock model calls the query_csv_rag tool, receives the RAG context, and generates a specialized, grounded response.
 
 - **Interactive Loop**: The console enters an interactive chat where each user turn triggers a new invoke_model call, potentially engaging the RAG tool.
+
+### Memory configuration
+
+- Conversation memory is enabled by default via a JSON file-backed vector store. Control it with CLI flags:
+  - `--memory_store json|in_memory|none` (`json` persists to disk by default)
+  - `--memory_k <int>` (top-k memory snippets to retrieve per turn)
+  - `--memory_max_items <int>` (per-session cap; evicts oldest)
+  - `--session_id <id>` (scope memories to a session/user)
+  - `--memory_path <path>` (JSON file location; default `app/output/memory.json`)

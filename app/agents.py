@@ -3,27 +3,35 @@ import numpy as np
 import boto3
 
 from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers    import SentenceTransformer
+from sentence_transformers import SentenceTransformer
 
 from typing import List, Dict, Any, Optional
+
+from memory_store import MemoryStore, MemoryItem
 
 class OnwardJourneyAgent:
     """
     Agent designed to take a handoff package, initialize with specialized tools/data,
     and immediately continue the user's journey based on the previous context.
     """
-    def __init__(self, handoff_package: dict,
-                       vector_store_embeddings : np.ndarray,
-                       vector_store_embeddings_text_chunks: list[str],
-                       embedding_model : SentenceTransformer,
-                       aws_role_arn: Optional[str] = None,
-                       model_name: str = 'anthropic.claude-3-7-sonnet-20250219-v1:0',
-                       aws_region: str = 'eu-west-2',
-                       aws_role_session_name : str = 'onward-journey-inference',
-                       temperature: float = 0.0,
-                       verbose: bool = False,
-                       seed: int = 1,
-                       top_K: int = 3):
+    def __init__(
+        self,
+        handoff_package: dict,
+        vector_store_embeddings: np.ndarray,
+        vector_store_embeddings_text_chunks: list[str],
+        embedding_model: SentenceTransformer,
+        aws_role_arn: Optional[str] = None,
+        model_name: str = "anthropic.claude-3-7-sonnet-20250219-v1:0",
+        aws_region: str = "eu-west-2",
+        aws_role_session_name: str = "onward-journey-inference",
+        temperature: float = 0.0,
+        verbose: bool = False,
+        seed: int = 1,
+        top_K: int = 3,
+        memory_store: Optional[MemoryStore] = None,
+        session_id: str = "default-session",
+        memory_k: int = 5,
+    ):
 
         # declare tools for bedrock
         self._tool_declarations()
@@ -55,15 +63,20 @@ class OnwardJourneyAgent:
         # Seed for reproducibility
         self.seed            = seed
 
+        # Memory configuration
+        self.memory_store    = memory_store
+        self.session_id      = session_id
+        self.memory_k        = memory_k
+
         # Specialized System Instruction for onward journey agent
         self.system_instruction = (
-                    "You are the **Onward Journey Agent**. Your sole purpose is to process "
-                    "and complete the user's request. **Your priority is correctness.** "
-                    "1. **Ambiguity Check:** If the user's request is ambiguous or requires a specific detail (e.g., 'Tax Credits'), your first turn **MUST BE A TEXT RESPONSE** asking a single, specific clarifying question. **DO NOT CALL THE TOOL YET.** "
-                    "2. **Tool Use:** If the request is clear, OR if the user has just provided the clarification, you must call the `query_csv_rag` tool to find the answer. "
-                    "3. **Final Answer:** After the tool call is complete, provide the final, grounded answer." \
-                    "Make sure your responses are formatted well for the user to read."
-                                  )
+            "You are the **Onward Journey Agent**. Your sole purpose is to process "
+            "and complete the user's request. **Your priority is correctness.** "
+            "1. **Ambiguity Check:** If the user's request is ambiguous or requires a specific detail (e.g., 'Tax Credits'), your first turn **MUST BE A TEXT RESPONSE** asking a single, specific clarifying question. **DO NOT CALL THE TOOL YET.** "
+            "2. **Tool Use:** If the request is clear, OR if the user has just provided the clarification, you must call the `query_csv_rag` tool to find the answer. "
+            "3. **Final Answer:** After the tool call is complete, provide the final, grounded answer."
+            "Make sure your responses are formatted well for the user to read."
+        )
         # Verbosity for debugging
         self.verbose = verbose
 
@@ -143,10 +156,48 @@ class OnwardJourneyAgent:
             if message['content']:
                 self.history.append(message)
 
+    def _build_system_instruction(self, memory_context: Optional[str]) -> str:
+        """Combine base instruction with optional memory context."""
+        if not memory_context:
+            return self.system_instruction
+        return (
+            f"{self.system_instruction}\n\n"
+            f"Prior notes from this user/session:\n{memory_context}\n"
+            "Use them if relevant; ignore if not."
+        )
+
+    def _get_memory_context(self, query: str) -> Optional[str]:
+        """Retrieve formatted memory snippets for the current session."""
+        if not self.memory_store:
+            return None
+        memories: List[MemoryItem] = self.memory_store.search(
+            session_id=self.session_id, query=query, k=self.memory_k
+        )
+        if not memories:
+            return None
+        formatted = "\n".join(m.format_for_prompt() for m in memories)
+        return formatted
+
+    def _record_memory(self, user_text: str, assistant_text: Optional[str]) -> None:
+        """Persist a concise memory of the turn."""
+        if not self.memory_store:
+            return
+        if assistant_text is None:
+            assistant_text = ""
+        summary = f"User: {user_text.strip()} | Assistant: {assistant_text.strip()}"
+        self.memory_store.add(
+            session_id=self.session_id,
+            role="assistant",
+            text=assistant_text,
+            summary=summary,
+        )
+
     def _send_message_and_handle_tools(self, prompt: str) -> str:
         """
         Sends a message to the Bedrock model and handles tool calls in a loop.
         """
+        memory_context = self._get_memory_context(prompt)
+
         # Add the new user prompt to history
         self._add_to_history(role="user", content=prompt)
 
@@ -163,7 +214,7 @@ class OnwardJourneyAgent:
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
                 "messages": self.history,
-                "system": self.system_instruction,
+                "system": self._build_system_instruction(memory_context),
                 "max_tokens": 4096,
                 "temperature": self.temperature,
                 "tools": self.bedrock_tools,
@@ -195,6 +246,7 @@ class OnwardJourneyAgent:
                 if self.verbose:
                     print("Onward Journey Agent detects ambiguity. Returning clarification question.")
                 self.awaiting_clarification = True
+                self._record_memory(user_text=prompt, assistant_text=text_content)
                 return text_content
             if not tool_calls:
                 response_text = text_content if text_content else "I couldn't generate a response."
@@ -244,6 +296,7 @@ class OnwardJourneyAgent:
             # Loop continues: The next iteration of the while loop sends the history
             # including the tool results back to the model.
 
+        self._record_memory(user_text=prompt, assistant_text=response_text)
         return response_text
 
     def process_handoff(self) -> str:
