@@ -1,18 +1,21 @@
 <script lang="ts">
-  import type { Props as ConversationMessageProps } from "$lib/components/ConversationMessage.svelte";
+  import type { ListableConversationMessageProps } from "$lib/types/ConversationMessage";
   import ConversationMessageContainer from "$lib/components/ConversationMessageContainer.svelte";
   import QuestionForm from "$lib/components/QuestionForm.svelte";
+  import { v7 as uuid } from "uuid";
 
-  let messages: ConversationMessageProps[] = $state([
+  let messages: ListableConversationMessageProps[] = $state([
     {
       message: "Hello",
       user: "GOV.UK Onward Journey Agent",
-      isSelf: false
+      isSelf: false,
+      id: uuid()
     },
     {
       message: "I would like to talk to someone",
       user: "You",
-      isSelf: true
+      isSelf: true,
+      id: uuid()
     }
   ]);
 </script>

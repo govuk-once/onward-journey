@@ -1,8 +1,9 @@
 <script lang="ts">
-  import type { Props as ConversationMessageProps } from "$lib/components/ConversationMessage.svelte";
+  import type { ListableConversationMessageProps } from "$lib/types/ConversationMessage";
+  import { v7 as uuid } from "uuid";
 
   interface Props {
-    messages: ConversationMessageProps[]
+    messages: ListableConversationMessageProps[]
   }
 
   let { messages = $bindable() }: Props = $props()
@@ -15,7 +16,8 @@
       messages.push({
         message,
         user: "You",
-        isSelf: true
+        isSelf: true,
+        id: uuid()
       })
       message = ""
     }}>

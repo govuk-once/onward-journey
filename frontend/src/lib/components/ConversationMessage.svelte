@@ -1,11 +1,6 @@
 <script lang="ts">
-  export interface Props {
-    message: string;
-    user?: string;
-    isSelf: boolean;
-  }
-
-  let { message, user, isSelf = true }: Props = $props();
+  import type { ConversationMessageProps } from "$lib/types/ConversationMessage"
+  let { message, user, isSelf = true }: ConversationMessageProps = $props();
 </script>
 
 <li class="app-c-conversation-message">
