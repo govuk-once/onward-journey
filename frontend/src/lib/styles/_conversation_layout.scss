@@ -1,0 +1,129 @@
+// Copied from https://github.com/alphagov/govuk-chat/blob/2a5b2f5c5d97c7f328fd5613ce4d2dc8c5495519/app/assets/stylesheets/objects/_conversation-layout.scss
+
+// Chosen to match animation with conversation scroll
+$slide-in-out-translation-px: 67px;
+
+.app-conversation-layout {
+  overflow-y: hidden;
+
+  @media print {
+    overflow-y: unset;
+  }
+}
+
+.app-conversation-layout__body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  height: 100vh;
+  @supports (height: 100dvh) {
+    height: 100dvh;
+  }
+  @media print {
+    height: auto;
+  }
+}
+
+.app-conversation-layout__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+
+  @media print {
+    overflow-y: unset;
+  }
+}
+
+.app-conversation-layout__wrapper {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+  min-height: 100px;
+}
+
+.app-conversation-layout__message-container {
+  overflow-y: auto;
+  position: relative;
+  @media (prefers-reduced-motion: no-preference) {
+    scroll-behavior: smooth;
+  }
+
+  @media print {
+    overflow-y: unset;
+  }
+}
+
+.app-conversation-layout__width-restrictor {
+  box-sizing: border-box;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 govuk-spacing(3);
+  width: 100%;
+}
+
+.app-conversation-layout__form-region {
+  overflow: hidden;
+  flex: 0 0 auto;
+
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    width: 100%;
+    border-top: 1px solid govuk-colour("mid-grey");
+  }
+}
+
+.app-conversation-layout__form-region--slide-in {
+  &::before, .app-conversation-layout__width-restrictor {
+    animation: slide-in 0.2s ease-in-out forwards;
+  }
+}
+
+.app-conversation-layout__form-region--slide-out {
+  &::before, .app-conversation-layout__width-restrictor {
+    animation: slide-out 0.2s ease-in-out forwards;
+  }
+}
+
+.app-conversation-layout__messages-container:focus {
+  outline: none;
+}
+
+.app-conversation-layout__list {
+  padding-left: 0;
+  margin: 0;
+}
+
+.app-conversation-layout__alerts {
+  margin: govuk-spacing(4) 0 0;
+}
+
+.js-enabled .app-conversation-layout__alerts {
+  display: none;
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    translate: 0 $slide-in-out-translation-px;
+  }
+
+  to {
+    opacity: 1;
+    translate: none;
+  }
+}
+
+@keyframes slide-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+    translate: 0 $slide-in-out-translation-px;
+  }
+}

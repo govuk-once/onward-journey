@@ -206,14 +206,5 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Terraform state
-.terraform
-
-# Ignore environment-specific tf backend config files
-infrastructure/environments/*.config
-
-# Ignore local tfvars files
-infrastructure/local.auto.tfvars
-
 # zsh
 .zshrc
