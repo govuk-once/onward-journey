@@ -12,3 +12,9 @@ variable "aws_account_id" {
     error_message = "The AWS account ID should be a 12-digit number"
   }
 }
+
+variable "aws_region" {
+  type        = string
+  description = "The AWS region to deploy resources into (e.g. eu-west-2)."
+  default     = "eu-west-2"
+}
