@@ -1,0 +1,30 @@
+name: File formatting checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate-file-formatting:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup python
+        uses: actions/setup-python@v6
+
+      - name: Install pre-commit
+        run: pip install pre-commit
+
+      - name: Run trailing-whitespace
+        run: pre-commit run trailing-whitespace --all-files
+
+      - name: Run end-of-file-fixer
+        run: pre-commit run end-of-file-fixer --all-files
+
+      - name: Run trailing-whitespace
+        run: pre-commit run check-yaml --all-files
