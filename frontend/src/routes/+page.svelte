@@ -6,10 +6,8 @@
   import { v7 as uuid } from "uuid";
   import { GenesysClient } from "$lib/services/genesysClient.js";
   import { onMount } from "svelte";
+  import { PUBLIC_SUPPORT_CHAT_URL as SUPPORT_CHAT_URL, PUBLIC_DEPLOYMENT_KEY as DEPLOYMENT_KEY } from "$env/static/public";
 
-  const { data } = $props();
-  const supportChatUrl = data.supportChatUrl;
-  const deploymentKey = data.deploymentKey;
   const sleep = (time: number) => new Promise(resolve => setTimeout(resolve, time))
 
   let sendMessageHandler: SendMessageHandler = $state((message) => {
@@ -22,7 +20,7 @@
   })
 
   onMount(() => {
-    const genesysClient = new GenesysClient({ websocketUrl: supportChatUrl, deploymentKey });
+    const genesysClient = new GenesysClient({ websocketUrl: SUPPORT_CHAT_URL, deploymentKey: DEPLOYMENT_KEY });
 
     // Log all messages in either direction for easy debugging
     genesysClient.on("rawMessage", (msg) => {
