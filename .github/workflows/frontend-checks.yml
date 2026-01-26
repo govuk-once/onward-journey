@@ -3,14 +3,14 @@ name: Frontend Checks
 on:
   pull_request:
     paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend-checks.yml'
+      - "frontend/**"
+      - ".github/workflows/frontend-checks.yml"
   push:
     branches:
       - main
     paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend-checks.yml'
+      - "frontend/**"
+      - ".github/workflows/frontend-checks.yml"
 
 jobs:
   lint-and-check:
@@ -23,9 +23,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '25'
-          cache: 'npm'
-          cache-dependency-path: 'frontend/package-lock.json'
+          node-version: "25"
+          cache: "npm"
+          cache-dependency-path: "frontend/package-lock.json"
 
       - name: Install dependencies
         working-directory: frontend
@@ -38,3 +38,25 @@ jobs:
       - name: Run SvelteKit Check
         working-directory: frontend
         run: npm run check
+
+  unit-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: "npm"
+          cache-dependency-path: "frontend/package-lock.json"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run unit tests
+        working-directory: frontend
+        run: npm run test
