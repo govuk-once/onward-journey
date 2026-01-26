@@ -38,8 +38,9 @@ We leverage Amazon Bedrock’s managed "AgentCore" to handle the complexities of
 
 ### 4. Database & Secrets Management
 
-The **Government Department Contacts Store** (RDS PostgreSQL) is where we store department and division metadata.
+The **Government Department Contacts Store** (RDS PostgreSQL 17.6) is where we store department and division metadata.
 
+- **The "Empty Secret" Workflow:** To maintain security, we do not store the database password in code or state. Consequently, the initial Terraform deployment for an environment will partially fail as it tries to read a secret version that doesn't exist yet.
 - **Accessing the DB:** You must manually set your password in **AWS Secrets Manager** after your first deployment.
 - **Secret Name:** Look for `${var.environment}-dept-contacts-db-password` in the AWS Console.
 - **Connectivity:** Access is strictly controlled via the `${var.environment}-rds-metadata-sg`. It only accepts inbound traffic from the orchestrator on port 5432.
@@ -48,8 +49,14 @@ The **Government Department Contacts Store** (RDS PostgreSQL) is where we store 
 
 ### Developer Quick Start
 
-1.  Initialise Terraform: `terraform init`
-2.  Create/Select your workspace: `Terraform workspace new [initials]` / `terraform workspace select [initials]`
-3.  Validate: Run `terraform validate` to ensure your specific environment names meet Bedrock's regex requirements.
-4.  Deploy: `terraform apply`
-5.  **Important:** Navigate to the **AWS Console** -> **Secrets Manager** and set the value for your `dept-contacts-db-password` so the stack can connect to the database.
+1.  **Initialise Terraform:** `terraform init`
+2.  **Create/Select your workspace:** `Terraform workspace new [initials]` / `terraform workspace select [initials]`
+3.  **Validate: Run** `terraform validate` to ensure your specific environment names meet Bedrock's regex requirements.
+4.  **First Deployment (Expected Failure):** `terraform apply`
+
+- Note: This will create the Secret container for the database password but will fail at the RDS creation step with a 'couldn't find resource' error for the secret version. This is expected.
+
+5.  **Important:** Navigate to the **AWS Console** -> **Secrets Manager** (Ensure region is `eu-west-2`) and set the value for your `${var.environment}-dept-contacts-db-password` as a **Plaintext** value (no brackets required) so the stack can connect to the database.
+6.  **Second Deployment:** Run `terraform apply` again
+
+- Terraform will now successfully read the password and provision the RDS instance.
