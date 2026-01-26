@@ -31,9 +31,9 @@
       console.log("Genesys client connected");
 
       genesysClient.on("message", (msg) => {
-        if (msg.direction == "Outbound" && msg.text) {
+        if (msg.direction == "Outbound") {
           messages.push({
-            message: msg.text,
+            message: msg.text!,
             user: "Genesys support",
             isSelf: false,
             id: msg.id!
@@ -49,7 +49,8 @@
 
       genesysClient.configureSession();
       await sleep(500);
-      genesysClient.sendMessage("Hi");
+      // We need to send an initial message to start the bot triage
+      genesysClient.sendMessage("I am being transferred from Onward Journey");
     });
 
     // Cleanup on component destroy
@@ -58,6 +59,7 @@
     };
   });
 
+  // Static initial message to demonstrate what a handover might look like
   let messages: ListableConversationMessageProps[] = $state([
     {
       message: "I am connecting you to a support agent",

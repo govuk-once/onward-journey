@@ -1,6 +1,8 @@
 # Frontend
 
-This directory is a sveltekit application that serves as an interface for the Onward Journey tool
+This directory is a sveltekit application that serves as an interface for the Onward Journey tool.
+
+Currently, this directly connects to a Genesys Web Messaging endpoint.
 
 ## Developing
 
