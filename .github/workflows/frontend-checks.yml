@@ -57,6 +57,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Prepare assets
+        working-directory: frontend
+        run: npm run prepare
+
       - name: Run unit tests
         working-directory: frontend
         run: npm run test
