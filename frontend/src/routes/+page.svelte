@@ -6,7 +6,8 @@
   import { v7 as uuid } from "uuid";
   import { GenesysClient } from "$lib/services/genesysClient.js";
   import { onMount } from "svelte";
-  import { PUBLIC_SUPPORT_CHAT_URL as SUPPORT_CHAT_URL, PUBLIC_DEPLOYMENT_KEY as DEPLOYMENT_KEY } from "$env/static/public";
+  import { env } from "$env/dynamic/public";
+  import { error } from "@sveltejs/kit";
 
   const sleep = (time: number) => new Promise(resolve => setTimeout(resolve, time))
 
@@ -20,7 +21,14 @@
   })
 
   onMount(() => {
-    const genesysClient = new GenesysClient({ websocketUrl: SUPPORT_CHAT_URL, deploymentKey: DEPLOYMENT_KEY });
+    const websocketUrl = env.PUBLIC_SUPPORT_CHAT_URL;
+    const deploymentKey = env.PUBLIC_DEPLOYMENT_KEY;
+
+    if (!websocketUrl || !deploymentKey) {
+      error(500, "Genesys configuration not set. Please set environment variables referenced in README.md");
+    }
+
+    const genesysClient = new GenesysClient({ websocketUrl, deploymentKey });
 
     // Log all messages in either direction for easy debugging
     genesysClient.on("rawMessage", (msg) => {
