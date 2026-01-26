@@ -1,25 +1,19 @@
-/**
- * PURPOSE: Managed Bedrock AgentCore Capabilities.
- * This file defines the modular utilities used by the Orchestration Layer.
- * By using managed Memory and Gateway components, we offload the complexity
- * of state management and tool connectivity to AWS-managed services.
- */
+## MANAGED BEDROCK AGENTCORE CAPABILITIES
+# Defines the modular utilities used by the Orchestration Layer. Offloads state management and tool connectivity to AWS-managed services.
 
-# AgentCore Memory: Managed storage for the agent's chat history and session context.
-# This can persist the initial history passed from GOV.UK and will
-# maintain the conversation state as the user interacts with Onward Journey.
-resource "aws_bedrockagent_memory" "agent_chat_context" {
-  memory_name = "${var.environment}-agent-chat-context"
-
-  storage_configuration {
-    # SESSION_SUMMARY allows the agent to maintain context over long conversations
-    # by distilling turns into concise summaries, essential for Genesys handoffs.
-    type = "SESSION_SUMMARY"
-  }
+## AGENTCORE MEMORY
+# Managed storage for the agent's chat history and session context. Persists interaction history and maintains conversational state.
+resource "aws_bedrockagentcore_memory" "agent_chat_context" {
+  name                      = "${var.environment}_agent_chat_context"
+  memory_execution_role_arn = aws_iam_role.agentcore_role.arn
+  event_expiry_duration     = 30
 }
 
-# AgentCore Gateway: Standardised interface for tool connectivity via MCP.
-# This acts as the bridge between the Orchestrator and external data sources.
-resource "aws_bedrockagent_gateway" "tool_interface" {
-  gateway_name = "${var.environment}-tool-interface"
+## AGENTCORE GATEWAY
+# Standardised interface for tool connectivity via MCP. Acts as the bridge between the Orchestrator and external data sources.
+resource "aws_bedrockagentcore_gateway" "tool_interface" {
+  name            = "${var.environment}-tool-interface"
+  role_arn        = aws_iam_role.agentcore_role.arn
+  protocol_type   = "MCP"
+  authorizer_type = "AWS_IAM"
 }
