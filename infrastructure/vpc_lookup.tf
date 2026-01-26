@@ -35,3 +35,13 @@ data "aws_subnets" "private" {
     values = ["app-private"]
   }
 }
+
+# Find the route tables for the private subnets to attach the S3 Gateway
+data "aws_route_tables" "private" {
+  vpc_id = data.aws_vpc.active.id
+
+  filter {
+    name   = "tag:Name"
+    values = ["*-app-pvt-*"]
+  }
+}

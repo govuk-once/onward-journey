@@ -46,3 +46,28 @@ resource "aws_security_group" "vpc_endpoints" {
     Name = "${var.environment}-vpc-endpoints-sg"
   }
 }
+
+# RDS METADATA STORE SECURITY GROUP
+resource "aws_security_group" "rds_metadata" {
+  name        = "${var.environment}-rds-metadata-sg"
+  description = "Allows the Orchestrator to query the Department Contacts database"
+  vpc_id      = data.aws_vpc.active.id
+
+  ingress {
+    description     = "PostgreSQL from Orchestrator"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.orchestrator.id]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.environment}-rds-metadata-sg" }
+}
