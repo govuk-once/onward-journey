@@ -24,14 +24,15 @@
   }
 }
 
-.app-c-question-form__form-group--error, .app-c-question-form__error-list {
+.app-c-question-form__form-group--error,
+.app-c-question-form__error-list {
   padding-left: govuk-spacing(3);
   border-left: $govuk-border-width-form-group-error solid $govuk-error-colour;
 }
 
 .app-c-question-form__error-message {
   @include govuk-typography-weight-bold($important: false);
-  color: $govuk-error-colour
+  color: $govuk-error-colour;
 }
 
 .app-c-question-form__textarea-wrapper {

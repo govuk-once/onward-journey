@@ -46,7 +46,8 @@ $message-container-spacing-mobile: 40px;
   }
 }
 
-.app-c-conversation-message__message--govuk-message, .app-c-conversation-message__feedback {
+.app-c-conversation-message__message--govuk-message,
+.app-c-conversation-message__feedback {
   width: calc(100% - $message-container-spacing-mobile);
 
   @include govuk-media-query($from: tablet) {
@@ -54,7 +55,9 @@ $message-container-spacing-mobile: 40px;
   }
 }
 
-.app-c-conversation-message__message--govuk-message:has(~ .app-c-conversation-message__feedback) {
+.app-c-conversation-message__message--govuk-message:has(
+  ~ .app-c-conversation-message__feedback
+) {
   margin: govuk-spacing(2) 0;
 
   @include govuk-media-query($from: tablet) {
@@ -93,7 +96,7 @@ $message-container-spacing-mobile: 40px;
     position: relative;
 
     // increase indentation for double digit numbers
-    &:nth-child(n+10) {
+    &:nth-child(n + 10) {
       padding: 0 0 0 govuk-spacing(5);
     }
   }
@@ -126,7 +129,8 @@ $message-container-spacing-mobile: 40px;
   outline-offset: -1px;
 }
 
-.app-c-conversation-message__loading-icon-container, .app-c-conversation-message__loading-icon {
+.app-c-conversation-message__loading-icon-container,
+.app-c-conversation-message__loading-icon {
   width: govuk-spacing(6);
   height: govuk-spacing(6);
 }
@@ -140,19 +144,19 @@ $message-container-spacing-mobile: 40px;
 }
 
 .app-c-conversation-message__loading-icon {
-	animation: loading-icon-pulse 3s ease infinite;
+  animation: loading-icon-pulse 3s ease infinite;
 
   @keyframes loading-icon-pulse {
     0% {
-      transform: scale(0.6)
+      transform: scale(0.6);
     }
 
     50% {
-      transform: scale(1)
+      transform: scale(1);
     }
 
     100% {
-      transform: scale(0.6)
+      transform: scale(0.6);
     }
   }
 }
@@ -176,29 +180,29 @@ $message-container-spacing-mobile: 40px;
     color: govuk-colour("black");
     left: 0;
     animation: ellipsis steps(1, end) 1s infinite;
-    content: '';
+    content: "";
   }
 }
 
 @keyframes ellipsis {
   0% {
-    content: '';
+    content: "";
   }
 
   25% {
-    content: '.';
+    content: ".";
   }
 
   50% {
-    content: '..';
-   }
+    content: "..";
+  }
 
   75% {
-    content: '...';
+    content: "...";
   }
 
   100% {
-    content: '';
+    content: "";
   }
 }
 

@@ -1,4 +1,4 @@
-import type { Identified } from './Identified';
+import type { Identified } from "./Identified";
 
 export interface ConversationMessageProps {
   message: string;
@@ -6,4 +6,5 @@ export interface ConversationMessageProps {
   isSelf: boolean;
 }
 
-export type ListableConversationMessageProps = ConversationMessageProps & Identified;
+export type ListableConversationMessageProps = ConversationMessageProps &
+  Identified;

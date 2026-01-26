@@ -1,5 +1,12 @@
-import { GenesysClient, type BaseMessage, type SessionResponse, type StructuredMessage, type ConnectionClosedEvent, type SessionExpiredEvent } from "./genesysClient";
-import { jest, expect } from "@jest/globals"
+import {
+  GenesysClient,
+  type BaseMessage,
+  type SessionResponse,
+  type StructuredMessage,
+  type ConnectionClosedEvent,
+  type SessionExpiredEvent,
+} from "./genesysClient";
+import { jest, expect } from "@jest/globals";
 
 class MockWebSocket {
   static CONNECTING = 0;
@@ -44,12 +51,13 @@ function setMockWebSocketInstance(instance: MockWebSocket) {
 }
 
 // Replace global WebSocket with mock
-(global as unknown as { WebSocket: typeof MockWebSocket }).WebSocket = class extends MockWebSocket {
-  constructor(url: string) {
-    super(url);
-    setMockWebSocketInstance(this);
-  }
-};
+(global as unknown as { WebSocket: typeof MockWebSocket }).WebSocket =
+  class extends MockWebSocket {
+    constructor(url: string) {
+      super(url);
+      setMockWebSocketInstance(this);
+    }
+  };
 
 describe("GenesysClient", () => {
   let client: GenesysClient;
@@ -58,7 +66,7 @@ describe("GenesysClient", () => {
     mockWebSocketInstance = null;
     client = new GenesysClient({
       websocketUrl: "wss://test.example.com/v2/messaging",
-      deploymentKey: "test-deployment-id"
+      deploymentKey: "test-deployment-id",
     });
   });
 
@@ -80,14 +88,14 @@ describe("GenesysClient", () => {
       const sessionResponseBody: SessionResponse = {
         connected: true,
         newSession: true,
-        tracingId: "trace-123"
+        tracingId: "trace-123",
       };
 
       const message: BaseMessage = {
         type: "response",
         class: "SessionResponse",
         code: 200,
-        body: sessionResponseBody
+        body: sessionResponseBody,
       };
 
       mockWebSocketInstance?.simulateMessage(JSON.stringify(message));
@@ -107,16 +115,16 @@ describe("GenesysClient", () => {
         id: "msg-123",
         channel: {
           from: {
-            nickname: "Agent"
-          }
-        }
+            nickname: "Agent",
+          },
+        },
       };
 
       const message: BaseMessage = {
         type: "message",
         class: "StructuredMessage",
         code: 200,
-        body: structuredMessageBody
+        body: structuredMessageBody,
       };
 
       mockWebSocketInstance?.simulateMessage(JSON.stringify(message));
@@ -131,20 +139,22 @@ describe("GenesysClient", () => {
 
       const connectionClosedBody: ConnectionClosedEvent = {
         tracingId: "trace-456",
-        reason: "Session ended by agent"
+        reason: "Session ended by agent",
       };
 
       const message: BaseMessage = {
         type: "message",
         class: "ConnectionClosedEvent",
         code: 200,
-        body: connectionClosedBody
+        body: connectionClosedBody,
       };
 
       mockWebSocketInstance?.simulateMessage(JSON.stringify(message));
 
       expect(connectionClosedHandler).toHaveBeenCalledTimes(1);
-      expect(connectionClosedHandler).toHaveBeenCalledWith(connectionClosedBody);
+      expect(connectionClosedHandler).toHaveBeenCalledWith(
+        connectionClosedBody,
+      );
     });
 
     it("should call sessionExpired handler when receiving SessionExpiredEvent", () => {
@@ -152,14 +162,14 @@ describe("GenesysClient", () => {
       client.on("sessionExpired", sessionExpiredHandler);
 
       const sessionExpiredBody: SessionExpiredEvent = {
-        tracingId: "trace-789"
+        tracingId: "trace-789",
       };
 
       const message: BaseMessage = {
         type: "message",
         class: "SessionExpiredEvent",
         code: 200,
-        body: sessionExpiredBody
+        body: sessionExpiredBody,
       };
 
       mockWebSocketInstance?.simulateMessage(JSON.stringify(message));
@@ -174,21 +184,23 @@ describe("GenesysClient", () => {
 
       const errorBody = {
         message: "Something went wrong",
-        code: "INVALID_REQUEST"
+        code: "INVALID_REQUEST",
       };
 
       const message: BaseMessage = {
         type: "response",
         class: "Error",
         code: 400,
-        body: errorBody
+        body: errorBody,
       };
 
       mockWebSocketInstance?.simulateMessage(JSON.stringify(message));
 
       expect(errorHandler).toHaveBeenCalledTimes(1);
       expect(errorHandler).toHaveBeenCalledWith(expect.any(Error));
-      expect((errorHandler.mock.calls[0][0] as Error).message).toContain("Something went wrong");
+      expect((errorHandler.mock.calls[0][0] as Error).message).toContain(
+        "Something went wrong",
+      );
     });
 
     it("should call rawMessage handler for all incoming messages", () => {
@@ -199,7 +211,7 @@ describe("GenesysClient", () => {
         type: "response",
         class: "SessionResponse",
         code: 200,
-        body: { connected: true }
+        body: { connected: true },
       };
 
       mockWebSocketInstance?.simulateMessage(JSON.stringify(message));
@@ -226,14 +238,14 @@ describe("GenesysClient", () => {
 
       const structuredMessageBody: StructuredMessage = {
         type: "Text",
-        text: "Test message"
+        text: "Test message",
       };
 
       const message: BaseMessage = {
         type: "message",
         class: "StructuredMessage",
         code: 200,
-        body: structuredMessageBody
+        body: structuredMessageBody,
       };
 
       mockWebSocketInstance?.simulateMessage(JSON.stringify(message));
@@ -251,7 +263,7 @@ describe("GenesysClient", () => {
         type: "message",
         class: "StructuredMessage",
         code: 200,
-        body: { type: "Text", text: "Test" }
+        body: { type: "Text", text: "Test" },
       };
 
       mockWebSocketInstance?.simulateMessage(JSON.stringify(message));
@@ -269,7 +281,7 @@ describe("GenesysClient", () => {
         type: "response",
         class: "SessionResponse",
         code: 200,
-        body: { connected: true }
+        body: { connected: true },
       };
 
       mockWebSocketInstance?.simulateMessage(JSON.stringify(message));
@@ -313,7 +325,9 @@ describe("GenesysClient", () => {
       const connectPromise = client.connect();
       mockWebSocketInstance?.simulateError();
 
-      await expect(connectPromise).rejects.toThrow("WebSocket connection error");
+      await expect(connectPromise).rejects.toThrow(
+        "WebSocket connection error",
+      );
       expect(errorHandler).toHaveBeenCalledTimes(1);
     });
   });

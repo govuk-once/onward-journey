@@ -239,7 +239,8 @@ export interface GenesysClientEvents {
   rawMessage: (message: BaseMessage) => void;
 }
 
-type EventCallback<K extends keyof GenesysClientEvents> = GenesysClientEvents[K];
+type EventCallback<K extends keyof GenesysClientEvents> =
+  GenesysClientEvents[K];
 
 // ============================================================================
 // GenesysClient Class
@@ -257,8 +258,10 @@ export class GenesysClient {
   private deploymentKey: string;
   private socket: WebSocket | null = null;
   private token: string | null = null;
-  private listeners: Map<keyof GenesysClientEvents, Set<EventCallback<keyof GenesysClientEvents>>> =
-    new Map();
+  private listeners: Map<
+    keyof GenesysClientEvents,
+    Set<EventCallback<keyof GenesysClientEvents>>
+  > = new Map();
 
   constructor(config: GenesysClientConfig) {
     this.websocketUrl = config.websocketUrl;
@@ -311,7 +314,7 @@ export class GenesysClient {
       action: "configureSession",
       deploymentId: this.deploymentKey,
       token: this.token,
-      tracingId: this.generateTracingId()
+      tracingId: this.generateTracingId(),
     };
 
     this.send(request);
@@ -333,9 +336,9 @@ export class GenesysClient {
         type: "Text",
         text,
         ...(metadata && {
-          channel: { metadata }
-        })
-      }
+          channel: { metadata },
+        }),
+      },
     };
 
     this.send(request);
@@ -369,18 +372,28 @@ export class GenesysClient {
   /**
    * Add an event listener
    */
-  on<K extends keyof GenesysClientEvents>(event: K, callback: GenesysClientEvents[K]): void {
+  on<K extends keyof GenesysClientEvents>(
+    event: K,
+    callback: GenesysClientEvents[K],
+  ): void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
     }
-    this.listeners.get(event)!.add(callback as EventCallback<keyof GenesysClientEvents>);
+    this.listeners
+      .get(event)!
+      .add(callback as EventCallback<keyof GenesysClientEvents>);
   }
 
   /**
    * Remove an event listener
    */
-  off<K extends keyof GenesysClientEvents>(event: K, callback: GenesysClientEvents[K]): void {
-    this.listeners.get(event)?.delete(callback as EventCallback<keyof GenesysClientEvents>);
+  off<K extends keyof GenesysClientEvents>(
+    event: K,
+    callback: GenesysClientEvents[K],
+  ): void {
+    this.listeners
+      .get(event)
+      ?.delete(callback as EventCallback<keyof GenesysClientEvents>);
   }
 
   // ============================================================================
@@ -432,7 +445,9 @@ export class GenesysClient {
     const callbacks = this.listeners.get(event);
     if (callbacks) {
       callbacks.forEach((callback) => {
-        (callback as (...args: Parameters<GenesysClientEvents[K]>) => void)(...args);
+        (callback as (...args: Parameters<GenesysClientEvents[K]>) => void)(
+          ...args,
+        );
       });
     }
   }
