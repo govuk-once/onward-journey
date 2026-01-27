@@ -1,4 +1,4 @@
-import pandas as pd 
+import pandas as pd
 import boto3
 import json
 import numpy as np
@@ -16,7 +16,7 @@ def df_to_text_chunks(df):
                  f"The last time the page was updated is {row['last_update']}. "
                  f"The description is {row['description']}.")
         chunks.append(chunk)
-    return chunks 
+    return chunks
 
 class vectorStore:
     """
@@ -26,13 +26,13 @@ class vectorStore:
         self.file_path = file_path
         self.data = pd.read_csv(self.file_path)
         self.chunk_data = df_to_text_chunks(self.data)
-        
+
         # Initialize Bedrock client instead of loading a local model
         self.bedrock_client = boto3.client(
-            service_name="bedrock-runtime", 
+            service_name="bedrock-runtime",
             region_name=aws_region
         )
-        
+
         # Compute embeddings via API
         self.embeddings = self._generate_all_embeddings(self.chunk_data)
 
@@ -55,13 +55,13 @@ class vectorStore:
     def _generate_all_embeddings(self, chunks: List[str]) -> np.ndarray:
         """Processes chunks. Note: Titan V2 prefers individual or batch calls."""
         all_embeddings = []
-        
+
         for i, chunk in enumerate(chunks):
             try:
                 embedding = self._get_single_embedding(chunk)
                 all_embeddings.append(embedding)
                 # Small sleep to prevent ThrottlingException if CSV is massive
-                if i % 10 == 0: time.sleep(0.1) 
+                if i % 10 == 0: time.sleep(0.1)
             except Exception as e:
                 print(f"Error embedding chunk {i}: {e}")
                 # Append zero-vector to maintain index alignment on failure

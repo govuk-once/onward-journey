@@ -2,7 +2,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from typing import List, Tuple, Dict, Optional 
+from typing import List, Tuple, Dict, Optional
 from pydantic                 import BaseModel
 
 class SearchResult(BaseModel):
@@ -16,36 +16,36 @@ class SearchResult(BaseModel):
 
 def extract_and_standardize_phone(text: str) -> str:
     """
-    Tries to extract a UK phone number and standardizes the format 
-    (e.g., '0300 200 3887') to match the expected class labels. 
+    Tries to extract a UK phone number and standardizes the format
+    (e.g., '0300 200 3887') to match the expected class labels.
     """
-    
+
     # Pattern 1: Common non-geographic/mobile-like split (e.g., 4-3-X)
     pattern_4_3_X = r'\d{3,4}[\s-]?\d{3}[\s-]?\d{3,4}'
-    
+
     # Pattern 2: Common freephone/geographic split (e.g., 4-2-2-2)
     pattern_4_2_2_2 = r'\d{4}[\s-]?\d{2}[\s-]?\d{2}[\s-]?\d{2}'
-    
+
     # Combine the patterns
     combined_pattern = r'\b(' + pattern_4_3_X + r'|' + pattern_4_2_2_2 + r')\b'
-    
+
     match = re.search(combined_pattern, text)
     if match:
         # 1. Clean up: remove spaces and hyphens
         extracted_num_cleaned = match.group(1).replace(' ', '').replace('-', '')
-        
+
         # 2. Re-format to the standard output format (4-3-X for consistency)
         if len(extracted_num_cleaned) >= 10:
              return extracted_num_cleaned[0:4] + ' ' + extracted_num_cleaned[4:7] + ' ' + extracted_num_cleaned[7:]
-        
+
         return ' '.join(extracted_num_cleaned[i:i+3] for i in range(0, len(extracted_num_cleaned), 3)).strip()
-        
+
     return 'NOT_FOUND' # Consistent misclassification label
 
 def get_encoded_labels_and_mapping(y_true, y_pred, custom_all_labels=None, semantic_mapping=None):
     """
     Standardizes label encoding for the confusion matrix.
-    
+
     Args:
         y_true (list): Standardized ground truth labels.
         y_pred (list): Standardized predicted labels.
@@ -60,7 +60,7 @@ def get_encoded_labels_and_mapping(y_true, y_pred, custom_all_labels=None, seman
 
     # 2. Create the integer mapping (codes) for sklearn's confusion_matrix
     label_to_code = {label: i for i, label in enumerate(all_unique_labels)}
-    
+
     # 3. Encode the input lists
     y_true_encoded = [label_to_code[label] for label in y_true]
     y_pred_encoded = [label_to_code[label] for label in y_pred]
