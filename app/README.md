@@ -1,8 +1,6 @@
 # Onward Journey Agent System
 
-This project demonstrates a specialized RAG (Retrieval-Augmented Generation) agent built using Amazon Bedrock and the boto3 SDK. The agent is designed to take over a conversation (handoff) from a general chatbot to provide a focused, data-driven response using custom data and specialized tools (function calling).
-
-The system uses local sentence transformers for generating embeddings and cosine similarity for data retrieval, enhancing the LLM's knowledge base before delegating the final generation to a Bedrock model (Claude Sonnet 3.7).
+This project implements a specialized Multi-Tool RAG Agent built with Amazon Bedrock (Claude 3.7 Sonnet). It is designed to handle conversation handoffs from a general chatbot, providing grounded answers using internal data, public GOV.UK records, or escalating to a live human agent via Genesys Cloud.
 
 ---
 
@@ -11,11 +9,15 @@ The system uses local sentence transformers for generating embeddings and cosine
 The project is organized into the following Python files:
 
 | File Name          | Description                                                                                                                                    |
-| :----------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
+| :----------------- | :-------------------------------------------------
 | `main.py`          | Sets up the environment, loads data, initializes the agent, and runs a sample conversation loop.                                               |
 | `agents.py`        | Contains the `OnwardJourneyAgent` class, which handles LLM configuration, tool declaration, RAG implementation, and the interactive chat loop. |
 | `data.py`          | Contains the `container` class and utility functions (`df_to_text_chunks`) for loading CSV data, chunking it, and generating embeddings.       |
 | `preprocessing.py` | Contains utility functions for data preparation, specifically for transforming raw conversation logs into structured JSON formats.             |
+| `test.py`          | *Evaluator*: Logic for running batch test cases and mapping results to topics for analysis. |
+| `metrics.py`       | *Analytics*: Calculates the Clarification Success Gain (CSG) score |
+| `helpers.py`       | *Utilities*: Standardizes UK phone numbers and maps labels for confusion matrices. |
+| `plotting.py`      | *Visuals*: Generates Seaborn-based heatmaps for performance reporting.|
 
 ---
 
@@ -27,8 +29,24 @@ Follow these steps to set up and run the project locally.
 
 - Make sure you have the repository pre-requisites from [the root README](../README.MD) installed.
 - **AWS Account** with configured **IAM credentials** (via CLI or environment variables).
-- Model Access Granted for the desired Claude model (e.g., Claude 3.5 Sonnet) in your target AWS region.
+- Model Access Granted for the desired Claude model (e.g., Claude 3.7 Sonnet) in your target AWS region.
+- Environment: A .env file required in the app directory to store API credentials and service URLs. 
 
+### 2. .env Configuration
+Ensure your .env file contains the following variables for OpenSearch and Genesys Cloud integration:
+```bash
+# OpenSearch (GOV.UK Knowledge Base)
+OPENSEARCH_URL=your_opensearch_url
+OPENSEARCH_USERNAME=your_username
+OPENSEARCH_PASSWORD=your_password
+
+# Genesys Cloud (Live Agent Handoff)
+GENESYS_DEPLOYMENT_ID=your_deployment_id
+GENESYS_REGION=euw2.pure.cloud
+
+# Local Knowledge Base
+KB_PATH=../mock_data/mock_rag_data.csv
+```
 ### 2. Data Preparation
 
 You will need a mock CSV file to simulate your internal data source for the RAG tool.
@@ -48,13 +66,9 @@ uid,service_name,department,phone_number,topic,user_type,tags,url,last_update,de
 # Add more rows of relevant data...
 ```
 
-### 3. Run the Agent
 
-You can view all configuration options and a description of each by passing the `--help` flag:
 
-```shell
-uv run main.py --help
-```
+### 3. Usage
 
 #### A. Interactive Mode (Conversation Demo)
 
@@ -62,7 +76,7 @@ Use this to see the agent handle the initial handoff and subsequent chat turns.
 (Run from ../onward-journey/app)
 
 ```shell
-uv run main.py interactive
+gds-cli aws once-onwardjourney-development-admin -- uv run main.py interactive
 ```
 
 #### B. Testing Mode (Performance Analysis)
@@ -70,10 +84,12 @@ uv run main.py interactive
 Use this to run the agent against a suite of pre-defined queries and generate the performance report and confusion matrix plot.
 
 ```shell
+gds-cli aws once-onwardjourney-development-admin -- uv run main.py test \
+    --output_dir path/to/output \ 
+    --test_data ./ \
 uv run main.py test \
-    --kb_path ./data/processed/mock/mock.csv \
-    --test_data ./data/test/prototype1/user_test_data/user_prompts.csv \
-    --region eu-west-2
+    --kb_path ../mock_data/mock_rag_data.csv \
+    --test_data ../test_data/prototype2/test_queries_large_80.json \
 ```
 
 #### Key Components and AWS Integration
@@ -88,11 +104,11 @@ uv run main.py test \
 
 ##### 2. RAG Implementation (`agents.py` and `data.py`)
 
-The RAG tool (query_csv_rag) remains the core component that operates locally to:
+The RAG tool (query_internal_kb) remains the core component that operates locally to:
 
-- Encode the user query using `SentenceTransformer`.
+- Encode the user query using `Amazon Titan Text Embeddings v2` model.
 
-- Perform Cosine Similarity retrieval against pre-computed embeddings.
+- Performs Cosine Similarity against pre-computed embeddings.
 
 - Augment the LLM's prompt with the top 3 relevant text chunks.
 
@@ -102,6 +118,6 @@ The RAG tool (query_csv_rag) remains the core component that operates locally to
 
 - **Handoff Processing**: The agent sends the initial conversation context to the Bedrock model.
 
-- **First Response**: The Bedrock model calls the query_csv_rag tool, receives the RAG context, and generates a specialized, grounded response.
+- **First Response**: The Bedrock model calls its tools (depending on strategy - e.g. govuk kb, oj kb or both), receives the RAG context, and generates a specialized, grounded response.
 
 - **Interactive Loop**: The console enters an interactive chat where each user turn triggers a new invoke_model call, potentially engaging the RAG tool.
