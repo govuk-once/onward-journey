@@ -1,7 +1,7 @@
 import pandas as pd
 import time
 
-from agents          import OnwardJourneyAgent 
+from agents          import OnwardJourneyAgent
 from typing          import List, Dict, Any
 from sklearn.metrics import confusion_matrix
 from helpers         import extract_and_standardize_phone, get_encoded_labels_and_mapping
@@ -12,7 +12,7 @@ class Evaluator:
     def __init__(self, oj_agent: OnwardJourneyAgent, test_queries: List[Dict[str, Any]], output_dir: str):
 
         self.oj_agent     = oj_agent
-        self.test_queries = test_queries    
+        self.test_queries = test_queries
         self.output_dir   = output_dir
 
         self.phone_to_topic = self._build_phone_to_topic_mapping()
@@ -21,7 +21,7 @@ class Evaluator:
         results = self.forced_mode_evaluation() if run_mode == 'forced' else self.clarification_mode_evaluation()
         self.save_results(results, run_mode)
         self.plot_and_save_cm(results, run_mode)
-        return results 
+        return results
 
     def _build_phone_to_topic_mapping(self) -> Dict[str, str]:
         """
@@ -33,7 +33,7 @@ class Evaluator:
             topic = test.get('topic', 'N/A')
             phone_to_topic[phone] = topic
         phone_to_topic["UNKNOWN"] = "UNKNOWN / FAILURE"
-        
+
         return phone_to_topic
 
     def _oj_agent_eval(self, query: str) -> str:
@@ -41,7 +41,7 @@ class Evaluator:
         Sends a single query to the OnwardJourneyAgent and returns the response.
         """
         response = self.oj_agent._send_message_and_tools(query)
-        return response    
+        return response
     def _queries_eval(self, forced: bool) -> pd.DataFrame:
         """
         Evaluates all test queries and returns the list of agent responses.
@@ -55,17 +55,17 @@ class Evaluator:
 
                 forced_prompt  = ""
                 agent_response = ""
-                
+
                 if forced:
                     # Force the agent to skip the 'Clarification Check' instruction
                     # We do this by passing a directive in the immediate user prompt
                     forced_prompt = f"INSTRUCTION: Ignore ambiguity. Use your tools immediately to answer: {query}"
                     agent_response = self._oj_agent_eval(forced_prompt)
-                else: 
+                else:
                     # Turn 1: Initial Query
                     agent_response = self._oj_agent_eval(query)
                     # Turn 2: Check if simulated response is needed for ambiguous cases
-                    # Note: oj_agent doesn't have 'awaiting_clarification' attribute, 
+                    # Note: oj_agent doesn't have 'awaiting_clarification' attribute,
                     # so we check if the response looks like a question or lacks tool output.
                     if test.get('is_ambiguous', False) and "simulated_clarification_response" in test:
                         clarification_ans = test['simulated_clarification_response']
@@ -74,7 +74,7 @@ class Evaluator:
 
                 end_time        = time.time()
                 extracted_phone = extract_and_standardize_phone(agent_response)
-                match           = 'PASS' if extracted_phone == test['expected_phone_number'] else 'FAIL' 
+                match           = 'PASS' if extracted_phone == test['expected_phone_number'] else 'FAIL'
 
                 results.append({
                     'test_id': test.get('test_id', idx),
@@ -88,7 +88,7 @@ class Evaluator:
                     'conversation': self.oj_agent.history
                 })
                 print(f"Case {idx+1}: {match}. Expected: {test['expected_phone_number']}, Got: {extracted_phone}")
-                
+
             except Exception as e:
                 print(f"Case {idx+1}: !!! ERROR: {e}")
                 results.append({
@@ -120,8 +120,8 @@ class Evaluator:
         y_pred = []
         for _, row in df.iterrows():
             extracted = str(row['extracted_phone'])
-            expected = str(row['correct_phone'])
-            
+            #expected = str(row['correct_phone'])
+
             if row['match_status'] == 'PASS':
                 # If the agent got the number right, the predicted topic IS the ground truth topic
                 y_pred.append(row['topic'])
@@ -137,20 +137,20 @@ class Evaluator:
 
         # 4. Use helper to get encoded values
         y_true_enc, y_pred_enc, labels, mapping, codes = get_encoded_labels_and_mapping(
-            y_true, 
-            y_pred, 
+            y_true,
+            y_pred,
             custom_all_labels=all_possible_topics
         )
 
             # 5. Generate and Save Confusion Matrix
         cm_array = confusion_matrix(y_true_enc, y_pred_enc, labels=codes)
         cm_df    = pd.DataFrame(cm_array, index=labels, columns=labels)
-        
+
         accuracy = (df['match_status'] == 'PASS').mean()
         fig = plot_uid_confusion_matrix(
-            cm_array, 
-            labels, 
-            accuracy, 
+            cm_array,
+            labels,
+            accuracy,
             title=f"Onward Journey Agent: {mode.capitalize()} Mode\n(Labels: Topic)"
         )
 

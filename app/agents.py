@@ -1,4 +1,4 @@
-import json 
+import json
 import numpy as np
 import boto3
 import os
@@ -13,14 +13,14 @@ from helpers                  import SearchResult
 load_dotenv()
 
 import asyncio
-import websockets 
-import uuid 
+import websockets
+import uuid
 
 def default_handoff():
     return {'handoff_agent_id': 'GOV.UK Chat', 'final_conversation_history': []}
 
 class OnwardJourneyAgent:
-    def __init__(self, 
+    def __init__(self,
                  handoff_package: dict,
                  vector_store_embeddings: np.ndarray,
                  vector_store_chunks: list[str],
@@ -30,22 +30,22 @@ class OnwardJourneyAgent:
                  temperature: float = 0.0,
                  strategy: int = 4,
                  top_K_OJ: int = 3,
-                 top_K_govuk: int = 1,           
+                 top_K_govuk: int = 1,
                  verbose: bool = False):
-        
+
         self.verbose = verbose
         self.client = boto3.client(service_name="bedrock-runtime", region_name=aws_region)
-        
+
         # Local KB (Onward Journey)
         self.embeddings = vector_store_embeddings
         self.chunk_data = vector_store_chunks
-        
+
         self.model_name      = model_name
         self.embedding_model = embedding_model
         self.temperature     = temperature
         self.top_K_OJ        = top_K_OJ
         self.top_K_govuk     = top_K_govuk
-        
+
         # Remote KB (GOV.UK OpenSearch)
         self.os_client = OpenSearch(
             hosts=[os.getenv("OPENSEARCH_URL")],
@@ -80,15 +80,15 @@ class OnwardJourneyAgent:
     def _add_to_history(self, role: str, text: str = '', tool_calls: list = [], tool_results: list = []):
         """Ensures content is always a list of valid dictionaries."""
         message = {"role": role, "content": []}
-        
+
         # Text must be wrapped in a dictionary with a 'type' key
         if text:
             message["content"].append({"type": "text", "text": text})
-        
+
         # Tool calls from the model are already dictionaries
         if tool_calls:
             message["content"].extend(tool_calls)
-            
+
         # Tool results must be wrapped correctly
         if tool_results:
             message["content"].extend(tool_results)
@@ -119,7 +119,7 @@ class OnwardJourneyAgent:
             "query_internal_kb": self.query_internal_kb,
             "query_govuk_kb": self.query_govuk_kb
         }
-        return 
+        return
 
     def _get_embedding(self, text: str) -> List[float]:
         """Standardized embedding for all KBs."""
@@ -138,7 +138,7 @@ class OnwardJourneyAgent:
 
     def _send_message_and_tools(self, prompt: str) -> str:
         self._add_to_history("user", prompt)
-        
+
         while True:
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
@@ -148,10 +148,10 @@ class OnwardJourneyAgent:
                 "temperature": self.temperature,
                 "tools": self.bedrock_tools
             }
-            
+
             resp = self.client.invoke_model(modelId=self.model_name, body=json.dumps(body))
             resp_body = json.loads(resp['body'].read())
-            
+
             content = resp_body.get('content', [])
             text = next((c['text'] for c in content if c['type'] == 'text'), None)
             tool_use = [c for c in content if c['type'] == 'tool_use']
@@ -169,7 +169,7 @@ class OnwardJourneyAgent:
             results = []
             for call in tool_use:
                 func = self.available_tools[call['name']]
-                
+
                 args = call['input']
                 out  = func(**args)
 
@@ -178,7 +178,7 @@ class OnwardJourneyAgent:
                     "tool_use_id": call['id'],
                     "content": [{"type": "text", "text": out}]
                 })
-            
+
             self._add_to_history("user", tool_results=results)
 
     def connect_to_live_chat(self, reason: str):
@@ -189,7 +189,7 @@ class OnwardJourneyAgent:
 
         async def chat_relay():
             session_token = str(uuid.uuid4())
-            
+
             async with websockets.connect(uri) as ws:
                 # initial handshake
                 await ws.send(json.dumps({
@@ -227,7 +227,7 @@ class OnwardJourneyAgent:
                     try:
                         async for message in ws:
                             data = json.loads(message)
-                            
+
                             if data.get("class") == "StructuredMessage":
                                 body = data.get("body", {})
                                 text = body.get("text")
@@ -239,22 +239,22 @@ class OnwardJourneyAgent:
                                     print(f"\rOnward Journey Agent: {text}")
                                     # Re-print the prompt for the next user input
                                     print("You: ", end="", flush=True)
-                                
+
                     except websockets.ConnectionClosed:
                         print("\n[SYSTEM] Connection closed.")
 
                 async def handle_tx():
                     while True:
-                    
+
                         user_resp = await asyncio.to_thread(input, "You: ")
-                        
+
                         if not user_resp.strip():
                             continue
-                            
+
                         if user_resp.lower() in ["exit", "quit"]:
                             await ws.close()
                             break
-                            
+
                         await ws.send(json.dumps({
                             "action": "onMessage",
                             "token" : session_token,
@@ -318,7 +318,7 @@ class OnwardJourneyAgent:
             self.bedrock_tools = [oj_tool]
         elif self.strategy == 2:
             self.bedrock_tools = [govuk_tool]
-        
+
         elif self.strategy == 4:
             self.bedrock_tools = [oj_tool, livechat_tool]
 
@@ -364,21 +364,21 @@ class OnwardJourneyAgent:
         3: Use both (Standard autonomous mode)
         """
         history = self.handoff_package.get('final_conversation_history', [])
-    
+
         if not history:
             if self.verbose:
                 print("Handoff history is empty. Treating as a standard chat.")
-            return None # avoid LLM hallucinating an empty string 
+            return None # avoid LLM hallucinating an empty string
 
         history_str = json.dumps(history)
-    
+
         # Strategy-specific constraints
         constraints = {
             1: "CRITICAL: You must ONLY use the 'query_internal_kb' tool for this initial turn.",
             2: "CRITICAL: You must ONLY use the 'query_govuk_kb' tool for this initial turn.",
             3: "CRITICAL: Use both 'query_internal_kb', 'query_govuk_kb' to answer."
         }
-        
+
         selected_constraint = constraints.get(self.strategy, constraints[3])
         initial_prompt = (
             f"Previous conversation history: {history_str}. "
@@ -409,16 +409,16 @@ class OnwardJourneyAgent:
             while True:
                 try:
                     user_input = input("You: ").strip()
-                    
+
                     if user_input.lower() in ["exit", "quit", "end"]:
                         print("\n👋 Conversation with Onward Journey Agent ended.")
                         break
-                    
+
                     if not user_input:
                         continue
 
                     response = self._send_message_and_tools(user_input)
                     print(f"\n Onward Journey Agent: {response}\n")
-                    
+
                 except KeyboardInterrupt:
                     break
