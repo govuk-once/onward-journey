@@ -16,9 +16,6 @@ DEFAULT_KB_PATH = os.path.join(SCRIPT_DIR, "../mock_data/mock_rag_data.csv")
 def default_handoff():
     return {'handoff_agent_id': 'GOV.UK Chat', 'final_conversation_history': []}
 
-SCRIPT_DIR      = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_KB_PATH = os.path.join(SCRIPT_DIR, "../mock_data/mock_rag_data.csv")
-
 class AgentRunner:
     def __init__(self, llm_model_id: str, path_to_kb: str, path_to_test_data: str,
                  aws_region: str, aws_role_arn : str, output_dir: str,
