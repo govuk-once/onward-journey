@@ -12,11 +12,14 @@ from helpers                  import SearchResult
 
 load_dotenv()
 
+import asyncio
+import websockets 
+import uuid 
+
+def default_handoff():
+    return {'handoff_agent_id': 'GOV.UK Chat', 'final_conversation_history': []}
+
 class OnwardJourneyAgent:
-    """
-    Agent designed to take a handoff package, initialize with specialized tools/data,
-    and immediately continue the user's journey based on the previous context.
-    """
     def __init__(self, 
                  handoff_package: dict,
                  vector_store_embeddings: np.ndarray,
@@ -25,8 +28,9 @@ class OnwardJourneyAgent:
                  model_name: str = "anthropic.claude-3-7-sonnet-20250219-v1:0",
                  aws_region: str = 'eu-west-2',
                  temperature: float = 0.0,
-                 strategy: int = 1,
-                 top_K: int = 3,                 
+                 strategy: int = 4,
+                 top_K_OJ: int = 3,
+                 top_K_govuk: int = 1,           
                  verbose: bool = False):
         
         self.verbose = verbose
@@ -39,7 +43,8 @@ class OnwardJourneyAgent:
         self.model_name      = model_name
         self.embedding_model = embedding_model
         self.temperature     = temperature
-        self.top_K           = top_K
+        self.top_K_OJ        = top_K_OJ
+        self.top_K_govuk     = top_K_govuk
         
         # Remote KB (GOV.UK OpenSearch)
         self.os_client = OpenSearch(
@@ -69,6 +74,7 @@ class OnwardJourneyAgent:
                     "Make sure your responses are formatted well for the user to read." \
                     "Always be looking to clarify if there is any ambiguity in the user's request."
                     "You can use both tools if the query requires a cross-referenced answer."
+                    "If a phone number is provided, you must call the `connect_to_live_agent` tool to transfer the user to a live agent."
                                   )
 
     def _add_to_history(self, role: str, text: str = '', tool_calls: list = [], tool_results: list = []):
@@ -100,6 +106,12 @@ class OnwardJourneyAgent:
             # Only use GOV.UK KB
             self.available_tools = {
                 "query_govuk_kb": self.query_govuk_kb
+            }
+        elif self.strategy == 4:
+            # Only use Internal KB and Live Chat
+            self.available_tools = {
+                "query_internal_kb": self.query_internal_kb,
+                "connect_to_live_agent": self.connect_to_live_chat
             }
         # Strategy 3 uses both tools, so no change needed
         else:
@@ -157,9 +169,10 @@ class OnwardJourneyAgent:
             results = []
             for call in tool_use:
                 func = self.available_tools[call['name']]
-                # Map the expected argument names for the tools
-                arg_name = "query" 
-                out = func(call['input'][arg_name])
+                
+                args = call['input']
+                out  = func(**args)
+
                 results.append({
                     "type": "tool_result",
                     "tool_use_id": call['id'],
@@ -167,6 +180,94 @@ class OnwardJourneyAgent:
                 })
             
             self._add_to_history("user", tool_results=results)
+
+    def connect_to_live_chat(self, reason: str):
+
+        deployment_id = os.getenv('GENESYS_DEPLOYMENT_ID')
+        region        = os.getenv('GENESYS_REGION', 'euw2.pure.cloud')
+        uri           = f"wss://webmessaging.{region}/v1?deploymentId={deployment_id}"
+
+        async def chat_relay():
+            session_token = str(uuid.uuid4())
+            
+            async with websockets.connect(uri) as ws:
+                # initial handshake
+                await ws.send(json.dumps({
+                    "action": "configureSession",
+                    "deploymentId": deployment_id,
+                    "token": session_token
+                }))
+
+                # wait for session to be ready
+                while True:
+                    raw_init = await ws.recv()
+                    init_data = json.loads(raw_init)
+                    if init_data.get("class") == "SessionResponse" and init_data.get("code") == 200:
+                        print('\n*** System: Session Ready. ***')
+                        break
+
+                # initial message to live agent
+                # This 'customAttributes' section is what the Participant Data block reads.
+                await ws.send(json.dumps({
+                    "action": "onMessage",
+                    "token" : session_token,
+                    "message": {
+                        "type": "Text",
+                        "text": "Transferring to a human agent...",
+                        "metadata": {
+                            "customAttributes": {
+                                "name": "Onward Journey Agent",
+                                "HandoffReason": reason,
+                                "LastTopic": self.history[-1].get('topic', 'General') if self.history else 'General'
+                            }
+                        }
+                    }
+                }))
+                async def handle_rx():
+                    try:
+                        async for message in ws:
+                            data = json.loads(message)
+                            
+                            if data.get("class") == "StructuredMessage":
+                                body = data.get("body", {})
+                                text = body.get("text")
+                                direction = body.get("direction")
+
+
+                                if text and direction == "Outbound":
+                                    # \r clears the current line where "You: " is sitting
+                                    print(f"\rOnward Journey Agent: {text}")
+                                    # Re-print the prompt for the next user input
+                                    print("You: ", end="", flush=True)
+                                
+                    except websockets.ConnectionClosed:
+                        print("\n[SYSTEM] Connection closed.")
+
+                async def handle_tx():
+                    while True:
+                    
+                        user_resp = await asyncio.to_thread(input, "You: ")
+                        
+                        if not user_resp.strip():
+                            continue
+                            
+                        if user_resp.lower() in ["exit", "quit"]:
+                            await ws.close()
+                            break
+                            
+                        await ws.send(json.dumps({
+                            "action": "onMessage",
+                            "token" : session_token,
+                            "message": {"type": "Text", "text": user_resp}
+                        }))
+
+                await asyncio.gather(handle_rx(), handle_tx())
+
+        try:
+            asyncio.run(chat_relay())
+        except KeyboardInterrupt:
+            pass
+        return "Conversation transferred to live agent."
 
     def _tool_declarations(self):
         """
@@ -199,11 +300,28 @@ class OnwardJourneyAgent:
             },
         }
 
+        livechat_tool = {
+            "name": "connect_to_live_agent",
+            "description": "Call this tool if the user requires human assistance or if the query involves a phone number that requires a live transfer.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "reason": {"type": "string", "description": "The reason for the handoff."}
+                },
+                "required": ["reason"],
+            },
+        }
+
+
         # 3. Filter based on Strategy
         if self.strategy == 1:
             self.bedrock_tools = [oj_tool]
         elif self.strategy == 2:
             self.bedrock_tools = [govuk_tool]
+        
+        elif self.strategy == 4:
+            self.bedrock_tools = [oj_tool, livechat_tool]
+
         else:
             # Strategy 3 or default: provide both tools
             self.bedrock_tools = [oj_tool, govuk_tool]
@@ -216,13 +334,13 @@ class OnwardJourneyAgent:
         """Local RAG search."""
         query_vec = np.array(self._get_embedding(query)).reshape(1, -1)
         sims = cosine_similarity(query_vec, self.embeddings)[0]
-        top_idx = sims.argsort()[-self.top_K:][::-1]
+        top_idx = sims.argsort()[-self.top_K_OJ:][::-1]
         return "Internal Context:\n" + "\n".join([self.chunk_data[i] for i in top_idx])
     def query_govuk_kb(self, query: str) -> str:
         """OpenSearch RAG search."""
         search_body = {
-            "size": self.top_K,
-            "query": {"knn": {"titan_embedding": {"vector": self._get_embedding(query), "k": self.top_K}}}
+            "size": self.top_K_govuk,
+            "query": {"knn": {"titan_embedding": {"vector": self._get_embedding(query), "k": self.top_K_govuk}}}
         }
         resp = self.os_client.search(index=self.os_index, body=search_body)
 
