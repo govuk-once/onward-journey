@@ -21,7 +21,7 @@
     <div class="govuk-header__logo">
       <a href={resolve("/")} class="govuk-header__link govuk-header__link--homepage">
         <GovUKLogo />
-        <span class="govuk-header__product-name">Agents Onward Journey</span>
+        <span class="govuk-header__product-name">Onward Journey</span>
         <span class="govuk-tag govuk-tag--yellow">
           Experimental
         </span>
