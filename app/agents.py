@@ -171,7 +171,7 @@ class OnwardJourneyAgent:
                 func = self.available_tools[call['name']]
 
                 args = call['input']
-                out  = await func(**args)
+                out  = func(**args)
 
                 results.append({
                     "type": "tool_result",
@@ -265,7 +265,7 @@ class OnwardJourneyAgent:
                 await asyncio.gather(handle_rx(), handle_tx())
 
         try:
-            task = asyncio.create_task(chat_relay())
+            asyncio.run(chat_relay())
         except KeyboardInterrupt:
             pass
         return "Conversation transferred to live agent."
