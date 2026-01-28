@@ -136,7 +136,7 @@ class OnwardJourneyAgent:
         )
         return json.loads(response.get('body').read()).get('embedding', [])
 
-    def _send_message_and_tools(self, prompt: str) -> str:
+    async def _send_message_and_tools(self, prompt: str) -> str:
         self._add_to_history("user", prompt)
 
         while True:
@@ -171,7 +171,7 @@ class OnwardJourneyAgent:
                 func = self.available_tools[call['name']]
 
                 args = call['input']
-                out  = func(**args)
+                out  = await func(**args)
 
                 results.append({
                     "type": "tool_result",
@@ -181,7 +181,7 @@ class OnwardJourneyAgent:
 
             self._add_to_history("user", tool_results=results)
 
-    def connect_to_live_chat(self, reason: str):
+    async def connect_to_live_chat(self, reason: str):
 
         deployment_id = os.getenv('GENESYS_DEPLOYMENT_ID')
         region        = os.getenv('GENESYS_REGION', 'euw2.pure.cloud')
@@ -191,6 +191,7 @@ class OnwardJourneyAgent:
             session_token = str(uuid.uuid4())
 
             async with websockets.connect(uri) as ws:
+                
                 # initial handshake
                 await ws.send(json.dumps({
                     "action": "configureSession",
@@ -264,7 +265,7 @@ class OnwardJourneyAgent:
                 await asyncio.gather(handle_rx(), handle_tx())
 
         try:
-            asyncio.run(chat_relay())
+            task = asyncio.create_task(chat_relay())
         except KeyboardInterrupt:
             pass
         return "Conversation transferred to live agent."
