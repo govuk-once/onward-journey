@@ -177,6 +177,7 @@ export interface StructuredMessage {
   content?: MessageContent[];
   metadata?: Record<string, string>;
   events?: MessageEvent[];
+  originatingEntity?: "Human" | "Bot";
 }
 
 /** Connection closed event */

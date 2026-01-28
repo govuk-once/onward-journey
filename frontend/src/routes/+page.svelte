@@ -39,10 +39,11 @@
       console.log("Genesys client connected");
 
       genesysClient.on("message", (msg) => {
-        if (msg.direction == "Outbound") {
+        if (msg.direction == "Outbound" && msg.text) {
+          console.log(msg)
           messages.push({
             message: msg.text!,
-            user: "Genesys support",
+            user: msg.channel?.from?.nickname ?? "Unknown " + msg.originatingEntity,
             isSelf: false,
             id: msg.id!
           })
