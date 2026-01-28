@@ -31,6 +31,13 @@ class OnwardJourneyAgent:
         memory_store: Optional[MemoryStore] = None,
         session_id: str = "default-session",
         memory_k: int = 5,
+        best_practice_store: Optional[MemoryStore] = None,
+        best_practice_k: int = 3,
+        best_practice_outcome: str = "good",
+        prompt_for_feedback: bool = True,
+        fast_answer_threshold: float = 0.95,
+        fast_answer_exclude_outcome: str = "bad",
+        guardrail_tags: Optional[list[str]] = None,
     ):
 
         # declare tools for bedrock
@@ -67,6 +74,13 @@ class OnwardJourneyAgent:
         self.memory_store    = memory_store
         self.session_id      = session_id
         self.memory_k        = memory_k
+        self.best_practice_store = best_practice_store
+        self.best_practice_k = best_practice_k
+        self.best_practice_outcome = best_practice_outcome
+        self.prompt_for_feedback = prompt_for_feedback
+        self.fast_answer_threshold = fast_answer_threshold
+        self.fast_answer_exclude_outcome = fast_answer_exclude_outcome
+        self.guardrail_tags = guardrail_tags
 
         # Specialized System Instruction for onward journey agent
         self.system_instruction = (
@@ -173,10 +187,65 @@ class OnwardJourneyAgent:
         memories: List[MemoryItem] = self.memory_store.search(
             session_id=self.session_id, query=query, k=self.memory_k
         )
-        if not memories:
+
+        formatted_sections = []
+        if memories:
+            formatted_sections.append(
+                "Recent session notes:\n" + "\n".join(m.format_for_prompt() for m in memories)
+            )
+        guardrails = self._build_guardrail_block(query=query)
+        if guardrails:
+            formatted_sections.append(guardrails)
+
+        if not formatted_sections:
             return None
-        formatted = "\n".join(m.format_for_prompt() for m in memories)
-        return formatted
+        return "\n\n".join(formatted_sections)
+
+    def _build_guardrail_block(self, query: str) -> Optional[str]:
+        """
+        Fetch best-practice patterns and render as concise guardrail bullets.
+        """
+        if not self.best_practice_store:
+            return None
+        results = self.best_practice_store.search_best_practice(
+            query=query,
+            outcome=self.best_practice_outcome,
+            tags=self.guardrail_tags,
+            k=self.best_practice_k,
+        )
+        if not results:
+            return None
+
+        lines = []
+        for item, score in results:
+            tag_str = f"[{', '.join(item.tags)}] " if item.tags else ""
+            lines.append(f"- {tag_str}{item.summary}")
+        return "Proven helpful patterns (guardrails):\n" + "\n".join(lines)
+
+    def _get_fast_answer(self, query: str) -> Optional[str]:
+        """
+        Check prior session memories for a highly similar question and reuse the stored answer
+        when the cosine similarity exceeds the configured threshold.
+        """
+        if not self.memory_store or self.fast_answer_threshold <= 0:
+            return None
+        results = self.memory_store.search_with_scores(
+            session_id=self.session_id, query=query, k=self.memory_k
+        )
+        if not results:
+            return None
+        # filter out low-quality outcomes if tagged
+        filtered = [
+            (item, score)
+            for item, score in results
+            if item.outcome != self.fast_answer_exclude_outcome
+        ]
+        if not filtered:
+            return None
+        best_item, score = filtered[0]
+        if score >= self.fast_answer_threshold:
+            return best_item.text
+        return None
 
     def _record_memory(self, user_text: str, assistant_text: Optional[str]) -> None:
         """Persist a concise memory of the turn."""
@@ -190,12 +259,43 @@ class OnwardJourneyAgent:
             role="assistant",
             text=assistant_text,
             summary=summary,
+            outcome=None,
+        )
+
+    def _record_best_practice(
+        self,
+        user_text: str,
+        assistant_text: str,
+        outcome: str,
+        tags: Optional[list[str]] = None,
+    ) -> None:
+        """Persist a best-practice memory entry when marked helpful."""
+        if not self.best_practice_store:
+            return
+        summary = f"Helpful pattern: User: {user_text.strip()} | Assistant: {assistant_text.strip()}"
+        self.best_practice_store.add(
+            session_id="best_practice",
+            role="assistant",
+            text=assistant_text,
+            summary=summary,
+            outcome=outcome,
+            tags=tags,
         )
 
     def _send_message_and_handle_tools(self, prompt: str) -> str:
         """
         Sends a message to the Bedrock model and handles tool calls in a loop.
         """
+        # Fast path: reuse a previous answer if the question is very similar
+        fast_answer = self._get_fast_answer(prompt)
+        if fast_answer:
+            self._add_to_history(role="user", content=prompt)
+            self._add_to_history(role="assistant", content=fast_answer)
+            self._record_memory(user_text=prompt, assistant_text=fast_answer)
+            if self.verbose:
+                print("Fast answer served from session memory (no model call).")
+            return fast_answer
+
         memory_context = self._get_memory_context(prompt)
 
         # Add the new user prompt to history
@@ -334,6 +434,9 @@ class OnwardJourneyAgent:
         print("-" * 100 + "\n")
 
         # 2. Start the interactive loop
+        last_user: Optional[str] = None
+        last_answer: Optional[str] = None
+
         while True:
             user_input = input("You: ")
 
@@ -342,12 +445,46 @@ class OnwardJourneyAgent:
                 print("\n👋 Conversation with Onward Journey Agent ended.")
                 break
 
+            # Admin command: promote last turn to best-practice with tags
+            if user_input.strip().startswith(":bp"):
+                if not last_user or not last_answer:
+                    print("No previous turn to tag yet.")
+                    continue
+                # syntax: :bp outcome tag1,tag2
+                parts = user_input.strip().split(" ", 2)
+                outcome = parts[1] if len(parts) > 1 else "good"
+                tags = []
+                if len(parts) > 2:
+                    tags = [t.strip() for t in parts[2].split(",") if t.strip()]
+                self._record_best_practice(
+                    user_text=last_user,
+                    assistant_text=last_answer,
+                    outcome=outcome,
+                    tags=tags,
+                )
+                print(f"Saved last turn as best-practice (outcome={outcome}, tags={tags}).")
+                continue
+
             if not user_input.strip():
                 continue
 
             # Send the new user message and handle any tool calls it triggers
             llm_response = self._send_message_and_handle_tools(user_input)
             print(f"\n Onward Journey Agent: {llm_response}\n")
+            last_user = user_input
+            last_answer = llm_response
+            if self.prompt_for_feedback and self.best_practice_store:
+                feedback = input("Was this helpful? (y/N): ").strip().lower()
+                if feedback == "y":
+                    self._record_best_practice(
+                        user_text=user_input,
+                        assistant_text=llm_response,
+                        outcome="good",
+                        tags=None,
+                    )
+                    print("Saved to best-practice memory.")
+                elif feedback == "n":
+                    print("Not saved to best-practice memory.")
 
     def query_csv_rag(self, user_query: str) -> str:
         """

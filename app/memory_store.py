@@ -20,6 +20,8 @@ class MemoryItem:
     summary: str
     embedding: np.ndarray
     created_at: float
+    outcome: Optional[str] = None
+    tags: Optional[list[str]] = None
 
     def format_for_prompt(self) -> str:
         """Return a concise string for inclusion in the system prompt."""
@@ -45,6 +47,8 @@ class MemoryStore:
         text: str,
         summary: Optional[str] = None,
         turn_index: Optional[int] = None,
+        outcome: Optional[str] = None,
+        tags: Optional[list[str]] = None,
     ) -> MemoryItem:
         """Store a new memory entry and return it."""
         content = summary if summary else text
@@ -62,6 +66,8 @@ class MemoryStore:
             summary=summary if summary else text,
             embedding=embedding,
             created_at=time.time(),
+            outcome=outcome,
+            tags=tags,
         )
         self._items.append(item)
         self._prune(session_id=session_id)
@@ -80,6 +86,75 @@ class MemoryStore:
         scores = cosine_similarity(query_embedding.reshape(1, -1), embedding_matrix)[0]
         top_indices = scores.argsort()[-k:][::-1]
         return [session_items[i] for i in top_indices]
+
+    def search_with_scores(
+        self, session_id: str, query: str, k: int = 5
+    ) -> List[tuple[MemoryItem, float]]:
+        """
+        Return top-k similar memories and their cosine scores.
+        Useful for fast-answer shortcuts that need a confidence threshold.
+        """
+        session_items = [i for i in self._items if i.session_id == session_id]
+        if not session_items:
+            return []
+
+        query_embedding = self.embedding_model.encode(query)
+        embedding_matrix = np.vstack([i.embedding for i in session_items])
+        scores = cosine_similarity(query_embedding.reshape(1, -1), embedding_matrix)[0]
+        top_indices = scores.argsort()[-k:][::-1]
+        return [(session_items[i], float(scores[i])) for i in top_indices]
+
+    def search_by_outcome(
+        self, query: str, outcome: Optional[str], k: int = 5
+    ) -> List[MemoryItem]:
+        """Return top-k memories filtered by outcome label."""
+        if outcome:
+            pool = [i for i in self._items if i.outcome == outcome]
+        else:
+            pool = list(self._items)
+
+        if not pool:
+            return []
+
+        query_embedding = self.embedding_model.encode(query)
+        embedding_matrix = np.vstack([i.embedding for i in pool])
+        scores = cosine_similarity(query_embedding.reshape(1, -1), embedding_matrix)[0]
+        top_indices = scores.argsort()[-k:][::-1]
+        return [pool[i] for i in top_indices]
+
+    def search_best_practice(
+        self,
+        query: str,
+        outcome: Optional[str],
+        tags: Optional[list[str]] = None,
+        k: int = 5,
+    ) -> List[tuple[MemoryItem, float]]:
+        """
+        Return top-k best-practice memories as (item, score), filtered by outcome
+        and optionally by tag overlap.
+        """
+        if outcome:
+            pool = [i for i in self._items if i.outcome == outcome]
+        else:
+            pool = list(self._items)
+
+        if tags:
+            tag_set = set(t.strip().lower() for t in tags if t)
+            pool = [
+                i
+                for i in pool
+                if i.tags
+                and tag_set.intersection({t.strip().lower() for t in i.tags if t})
+            ]
+
+        if not pool:
+            return []
+
+        query_embedding = self.embedding_model.encode(query)
+        embedding_matrix = np.vstack([i.embedding for i in pool])
+        scores = cosine_similarity(query_embedding.reshape(1, -1), embedding_matrix)[0]
+        top_indices = scores.argsort()[-k:][::-1]
+        return [(pool[i], float(scores[i])) for i in top_indices]
 
     def _next_turn_index(self, session_id: str) -> int:
         session_items = [i for i in self._items if i.session_id == session_id]
@@ -144,6 +219,8 @@ class JsonMemoryStore(MemoryStore):
                 summary=raw["summary"],
                 embedding=embedding,
                 created_at=raw["created_at"],
+                outcome=raw.get("outcome"),
+                tags=raw.get("tags"),
             )
             self._items.append(item)
 

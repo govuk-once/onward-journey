@@ -17,6 +17,7 @@ from loaders import load_test_queries
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_KB_PATH = os.path.join(SCRIPT_DIR, "../mock_data/mock_rag_data.csv")
 DEFAULT_MEMORY_PATH = os.path.join(SCRIPT_DIR, "output", "memory.json")
+DEFAULT_BEST_PRACTICE_PATH = os.path.join(SCRIPT_DIR, "output", "best_practice.json")
 
 
 class AgentRunner:
@@ -41,6 +42,11 @@ class AgentRunner:
         memory_max_items: int = 50,
         session_id: str = "default-session",
         memory_path: str = DEFAULT_MEMORY_PATH,
+        best_practice_store_type: str = "json",
+        best_practice_path: str = DEFAULT_BEST_PRACTICE_PATH,
+        best_practice_k: int = 3,
+        prompt_for_feedback: bool = True,
+        fast_answer_threshold: float = 0.95,
     ):
         """
         Description: Initializes the manager with essential configuration parameters and sets seeds.
@@ -77,6 +83,11 @@ class AgentRunner:
         self.memory_max_items = memory_max_items
         self.session_id = session_id
         self.memory_path = memory_path
+        self.best_practice_store_type = best_practice_store_type
+        self.best_practice_path = best_practice_path
+        self.best_practice_k = best_practice_k
+        self.prompt_for_feedback = prompt_for_feedback
+        self.fast_answer_threshold = fast_answer_threshold
 
         self._set_all_seeds(self.seed)
 
@@ -154,6 +165,19 @@ class AgentRunner:
                 file_path=self.memory_path,
                 max_items_per_session=self.memory_max_items,
             )
+
+        best_practice_store = None
+        if self.best_practice_store_type == "in_memory":
+            best_practice_store = MemoryStore(
+                embedding_model=vector_store.get_embedding_model(),
+                max_items_per_session=self.memory_max_items,
+            )
+        elif self.best_practice_store_type == "json":
+            best_practice_store = JsonMemoryStore(
+                embedding_model=vector_store.get_embedding_model(),
+                file_path=self.best_practice_path,
+                max_items_per_session=self.memory_max_items,
+            )
         return OnwardJourneyAgent(
             handoff_package=handoff_data,
             vector_store_embeddings=vector_store.get_embeddings(),
@@ -166,6 +190,10 @@ class AgentRunner:
             memory_store=memory_store,
             session_id=self.session_id,
             memory_k=self.memory_k,
+            best_practice_store=best_practice_store,
+            best_practice_k=self.best_practice_k,
+            prompt_for_feedback=self.prompt_for_feedback,
+            fast_answer_threshold=self.fast_answer_threshold,
         )
 
 
@@ -257,6 +285,48 @@ if __name__ == "__main__":
         help=f"Path for JSON memory store (default: {DEFAULT_MEMORY_PATH}).",
     )
 
+    parser.add_argument(
+        "--best_practice_store",
+        type=str,
+        choices=["none", "in_memory", "json"],
+        default="json",
+        help="Backend for best-practice memories marked helpful.",
+    )
+
+    parser.add_argument(
+        "--best_practice_path",
+        type=str,
+        default=DEFAULT_BEST_PRACTICE_PATH,
+        help=f"Path for best-practice JSON store (default: {DEFAULT_BEST_PRACTICE_PATH}).",
+    )
+
+    parser.add_argument(
+        "--guardrail_tags",
+        type=str,
+        default=None,
+        help="Comma-separated tags to filter best-practice guardrails (e.g., billing,identity).",
+    )
+
+    parser.add_argument(
+        "--best_practice_k",
+        type=int,
+        default=3,
+        help="Top-k best-practice snippets to retrieve per turn.",
+    )
+
+    parser.add_argument(
+        "--prompt_for_feedback",
+        action="store_true",
+        help="Prompt after each response to mark it helpful and save to best-practice store.",
+    )
+
+    parser.add_argument(
+        "--fast_answer_threshold",
+        type=float,
+        default=0.95,
+        help="Cosine similarity threshold (0-1) to reuse a prior answer without an LLM call.",
+    )
+
     args = parser.parse_args()
 
     # Ensure test_data path is provided if the mode is 'test'
@@ -283,6 +353,13 @@ if __name__ == "__main__":
         memory_max_items=args.memory_max_items,
         session_id=args.session_id,
         memory_path=args.memory_path,
+        best_practice_store_type=args.best_practice_store,
+        best_practice_path=args.best_practice_path,
+        best_practice_k=args.best_practice_k,
+        prompt_for_feedback=args.prompt_for_feedback,
+        fast_answer_threshold=args.fast_answer_threshold,
+        fast_answer_exclude_outcome="bad",
+        guardrail_tags=[t.strip() for t in args.guardrail_tags.split(",")] if args.guardrail_tags else None,
     )
 
     # Execute the objects call method with the specified mode
