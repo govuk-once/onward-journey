@@ -19,6 +19,8 @@
     })
   })
 
+  let showTypingIndicator: boolean = $state(false)
+
   onMount(() => {
     const websocketUrl = env.PUBLIC_SUPPORT_CHAT_URL;
     const deploymentKey = env.PUBLIC_DEPLOYMENT_KEY;
@@ -36,6 +38,8 @@
 
     genesysClient.connect().then(async () => {
       genesysClient.on("message", (msg) => {
+
+        // When we receive a new message from the agent, show it on the page
         if (msg.direction == "Outbound" && msg.text) {
           messages.push({
             message: msg.text!,
@@ -44,6 +48,17 @@
             isSelf: false,
             id: msg.id!
           })
+        }
+
+        // When we receive a typing indicator event, show the typing indicator for the duration specified
+        if (msg.type == "Event" && msg.events?.find((e) => e.eventType == "Typing")) {
+          const typingEvent = msg.events?.find((e) => e.eventType == "Typing")
+          showTypingIndicator = true
+          if (typingEvent && typingEvent.typing.duration) {
+            setTimeout(() => {
+              showTypingIndicator = false
+            }, typingEvent.typing.duration)
+          }
         }
       })
 
@@ -78,7 +93,7 @@
 
 <main class="app-conversation-layout__main" id="main-content">
   <div class="app-conversation-layout__wrapper app-conversation-layout__width-restrictor">
-    <ConversationMessageContainer messages={messages}/>
+    <ConversationMessageContainer messages={messages} showTypingIndicator={showTypingIndicator}/>
 
     <QuestionForm messageHandler={sendMessageHandler}/>
   </div>

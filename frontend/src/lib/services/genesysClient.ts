@@ -163,7 +163,8 @@ export interface ContentAction {
 /** Event within a message */
 export interface MessageEvent {
   eventType: string;
-  [key: string]: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
 }
 
 /** Structured message received from the server */
