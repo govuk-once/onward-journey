@@ -77,13 +77,15 @@ $slide-in-out-translation-px: 67px;
 }
 
 .app-conversation-layout__form-region--slide-in {
-  &::before, .app-conversation-layout__width-restrictor {
+  &::before,
+  .app-conversation-layout__width-restrictor {
     animation: slide-in 0.2s ease-in-out forwards;
   }
 }
 
 .app-conversation-layout__form-region--slide-out {
-  &::before, .app-conversation-layout__width-restrictor {
+  &::before,
+  .app-conversation-layout__width-restrictor {
     animation: slide-out 0.2s ease-in-out forwards;
   }
 }
