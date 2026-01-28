@@ -2,9 +2,7 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
 
-# Import your existing code
 from agents import OnwardJourneyAgent, default_handoff
 from data import vectorStore
 
@@ -25,8 +23,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 3. Initialize your Agent & Vector Store once on startup
-# Update these paths to point to your actual local files
+# Initialize your Agent & Vector Store once on startup
+# store KB_PATH in .env file e.g. ../mock_data/mock_rag_data.csv 
 KB_PATH = os.getenv("KB_PATH", "./your_kb_file.csv")
 vs = vectorStore(file_path=KB_PATH)
 
@@ -41,15 +39,12 @@ agent = OnwardJourneyAgent(
 class ChatRequest(BaseModel):
     message: str
 
-import asyncio
-
-# main.py
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
         # Await the coroutine to get the string response
         response_text = await agent._send_message_and_tools(request.message)
-        
+        print(f"Response: {response_text}")
         # Ensure we are returning a serializable dictionary
         return {"response": response_text}
     except Exception as e:
