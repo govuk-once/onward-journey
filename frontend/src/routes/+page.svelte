@@ -48,6 +48,9 @@
             isSelf: false,
             id: msg.id!
           })
+
+          // Immediately expire the typing indicator
+          showTypingIndicator = false
         }
 
         // When we receive a typing indicator event, show the typing indicator for the duration specified
