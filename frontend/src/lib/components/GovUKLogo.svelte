@@ -1,3 +1,4 @@
+
 <!-- We need to use a component instead of a static file to allow fill="currentcolor" to work properly-->
 <svg
   focusable="false"

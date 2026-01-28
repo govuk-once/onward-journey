@@ -1,36 +1,46 @@
 <script lang="ts">
-  // Use $props() to receive the backend function from the parent
-  let { onSend } = $props<{ onSend: (text: string) => void }>();
-  
-  let value = $state("");
+  export type SendMessageHandler = (message: string) => void;
 
-  function handleSubmit(e: SubmitEvent) {
-    e.preventDefault();
-    if (!value.trim()) return;
-
-    // Trigger the parent's function
-    onSend(value);
-    
-    // Clear the input
-    value = "";
+  interface Props {
+    messageHandler: SendMessageHandler
   }
+
+  let { messageHandler }: Props = $props()
+  let message = $state("")
 </script>
 
-<form onsubmit={handleSubmit} class="app-conversation-layout__form">
-  <div class="govuk-form-group">
-    <label class="govuk-label" for="onward-journey-input">
-      Ask a question
-    </label>
-    <div class="flex gap-2">
-      <input 
-        bind:value 
-        class="govuk-input" 
-        id="onward-journey-input" 
-        type="text"
-      />
-      <button type="submit" class="govuk-button" data-module="govuk-button">
-        Send
-      </button>
-    </div>
+<div class="app-conversation-layout__form-region">
+  <div class="app-c-question-form">
+    <form class="app-c-question-form__form" onsubmit={() => {
+      messageHandler(message)
+      message = ""
+    }}>
+
+      <div class="app-c-question-form__form-group">
+        <div class="app-c-question-form__textarea-wrapper">
+          <textarea
+            class="app-c-question-form__textarea"
+            name="message"
+            placeholder="Enter your question or message"
+            rows=1
+            bind:value={message}
+            onkeydown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                if (message.trim()) {
+                  messageHandler(message)
+                  message = ""
+                }
+              }
+            }}
+          ></textarea>
+        </div>
+        <div class="app-c-question-form__button-wrapper">
+          <button class="app-c-blue-button govuk-button app-c-blue-button--question-form">
+            Start
+          </button>
+        </div>
+      </div>
+    </form>
   </div>
-</form>
+</div>
