@@ -74,7 +74,7 @@ class OnwardJourneyAgent:
                     "Make sure your responses are formatted well for the user to read." \
                     "Always be looking to clarify if there is any ambiguity in the user's request."
                     "You can use both tools if the query requires a cross-referenced answer."
-                    "If a phone number is provided, you must call the `connect_to_live_agent` tool to transfer the user to a live agent."
+                    "If a phone number is provided, you must call the `connect_to_live_chat` tool to transfer the user to a live agent."
                                   )
 
     def _add_to_history(self, role: str, text: str = '', tool_calls: list = [], tool_results: list = []):
@@ -111,7 +111,7 @@ class OnwardJourneyAgent:
             # Only use Internal KB and Live Chat
             self.available_tools = {
                 "query_internal_kb": self.query_internal_kb,
-                "connect_to_live_agent": self.connect_to_live_chat
+                "connect_to_live_chat": self.connect_to_live_chat
             }
         # Strategy 3 uses both tools, so no change needed
         else:
@@ -136,13 +136,14 @@ class OnwardJourneyAgent:
         )
         return json.loads(response.get('body').read()).get('embedding', [])
 
+
     async def _send_message_and_tools(self, prompt: str) -> str:
-        self._add_to_history("user", prompt)
+        self._add_to_history("user", prompt) #
 
         while True:
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
-                "system": self.system_instruction,
+                "system": self.system_instruction, #
                 "messages": self.history,
                 "max_tokens": 4096,
                 "temperature": self.temperature,
@@ -156,22 +157,25 @@ class OnwardJourneyAgent:
             text = next((c['text'] for c in content if c['type'] == 'text'), None)
             tool_use = [c for c in content if c['type'] == 'tool_use']
 
-            if self.verbose:
-                print('BODY IS', body)
-                print('RESPONSE BODY IS', resp_body)
-                print('TEXT IS', text)
-                print('TOOL USE IS', tool_use)
-            self._add_to_history("assistant", text, tool_calls=tool_use)
+            self._add_to_history("assistant", text, tool_calls=tool_use) #
 
             if not tool_use:
                 return text or "I encountered an error."
 
             results = []
+            handoff_signal = None 
+
             for call in tool_use:
                 func = self.available_tools[call['name']]
-
                 args = call['input']
-                out  = func(**args)
+                
+                if asyncio.iscoroutinefunction(func):
+                    out = await func(**args)
+                else:
+                    out = func(**args)
+
+                if call['name'] == "connect_to_live_chat":
+                    handoff_signal = out 
 
                 results.append({
                     "type": "tool_result",
@@ -179,96 +183,35 @@ class OnwardJourneyAgent:
                     "content": [{"type": "text", "text": out}]
                 })
 
+
             self._add_to_history("user", tool_results=results)
 
-    async def connect_to_live_chat(self, reason: str):
+            # If we have a handoff signal, we stop the loop here and return
+            # This prevents a second invoke_model call that might fail or lose the signal
+            if handoff_signal:
 
-        deployment_id = os.getenv('GENESYS_DEPLOYMENT_ID')
-        region        = os.getenv('GENESYS_REGION', 'euw2.pure.cloud')
-        uri           = f"wss://webmessaging.{region}/v1?deploymentId={deployment_id}"
-
-        async def chat_relay():
-            session_token = str(uuid.uuid4())
-
-            async with websockets.connect(uri) as ws:
+                final_body = body.copy()
+                final_body["messages"] = self.history
                 
-                # initial handshake
-                await ws.send(json.dumps({
-                    "action": "configureSession",
-                    "deploymentId": deployment_id,
-                    "token": session_token
-                }))
+                final_resp = self.client.invoke_model(modelId=self.model_name, body=json.dumps(final_body))
+                final_resp_body = json.loads(final_resp['body'].read())
+                final_text = next((c['text'] for c in final_resp_body.get('content', []) if c['type'] == 'text'), "Transferring...")
+                
+                return f"{final_text}\n\n{handoff_signal}"
 
-                # wait for session to be ready
-                while True:
-                    raw_init = await ws.recv()
-                    init_data = json.loads(raw_init)
-                    if init_data.get("class") == "SessionResponse" and init_data.get("code") == 200:
-                        print('\n*** System: Session Ready. ***')
-                        break
-
-                # initial message to live agent
-                # This 'customAttributes' section is what the Participant Data block reads.
-                await ws.send(json.dumps({
-                    "action": "onMessage",
-                    "token" : session_token,
-                    "message": {
-                        "type": "Text",
-                        "text": "Transferring to a human agent...",
-                        "metadata": {
-                            "customAttributes": {
-                                "name": "Onward Journey Agent",
-                                "HandoffReason": reason,
-                                "LastTopic": self.history[-1].get('topic', 'General') if self.history else 'General'
-                            }
-                        }
-                    }
-                }))
-                async def handle_rx():
-                    try:
-                        async for message in ws:
-                            data = json.loads(message)
-
-                            if data.get("class") == "StructuredMessage":
-                                body = data.get("body", {})
-                                text = body.get("text")
-                                direction = body.get("direction")
-
-
-                                if text and direction == "Outbound":
-                                    # \r clears the current line where "You: " is sitting
-                                    print(f"\rOnward Journey Agent: {text}")
-                                    # Re-print the prompt for the next user input
-                                    print("You: ", end="", flush=True)
-
-                    except websockets.ConnectionClosed:
-                        print("\n[SYSTEM] Connection closed.")
-
-                async def handle_tx():
-                    while True:
-
-                        user_resp = await asyncio.to_thread(input, "You: ")
-
-                        if not user_resp.strip():
-                            continue
-
-                        if user_resp.lower() in ["exit", "quit"]:
-                            await ws.close()
-                            break
-
-                        await ws.send(json.dumps({
-                            "action": "onMessage",
-                            "token" : session_token,
-                            "message": {"type": "Text", "text": user_resp}
-                        }))
-
-                await asyncio.gather(handle_rx(), handle_tx())
-
-        try:
-            asyncio.run(chat_relay())
-        except KeyboardInterrupt:
-            pass
-        return "Conversation transferred to live agent."
+    async def connect_to_live_chat(self, reason: str):
+        """
+        Returns handoff configuration for the frontend. 
+        """
+        handoff_config = {
+            "action": "initiate_live_handoff",
+            "deploymentId": os.getenv('GENESYS_DEPLOYMENT_ID'),
+            "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
+            "token": str(uuid.uuid4()),
+            "reason": reason
+        }
+        
+        return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
 
     def _tool_declarations(self):
         """
@@ -302,7 +245,7 @@ class OnwardJourneyAgent:
         }
 
         livechat_tool = {
-            "name": "connect_to_live_agent",
+            "name": "connect_to_live_chat",
             "description": "Call this tool if the user requires human assistance or if the query involves a phone number that requires a live transfer.",
             "input_schema": {
                 "type": "object",
