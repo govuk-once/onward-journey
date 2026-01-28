@@ -14,7 +14,6 @@
   let sendMessageHandler: SendMessageHandler = $state((message) => {
     messages.push({
       message,
-      user: "You",
       isSelf: true,
       id: uuid()
     })
@@ -36,14 +35,12 @@
     });
 
     genesysClient.connect().then(async () => {
-      console.log("Genesys client connected");
-
       genesysClient.on("message", (msg) => {
         if (msg.direction == "Outbound" && msg.text) {
-          console.log(msg)
           messages.push({
             message: msg.text!,
             user: msg.channel?.from?.nickname ?? "Unknown " + msg.originatingEntity,
+            image: msg.channel?.from?.image,
             isSelf: false,
             id: msg.id!
           })
