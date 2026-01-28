@@ -13,6 +13,27 @@
     reason: string;
   }
 
+  import { tick } from 'svelte';
+
+  let scrollContainer: HTMLElement | undefined = $state();
+
+  // This function (action) will run whenever the element is created or updated
+  function autoScroll(node: HTMLElement) {
+    const observer = new ResizeObserver(() => {
+      node.scrollTo({
+        top: node.scrollHeight,
+        behavior: 'smooth'
+      });
+    });
+
+    observer.observe(node);
+
+    return {
+      destroy() {
+        observer.disconnect();
+      }
+    };
+  }
   // --- Reactive State ---
   let messages: ListableConversationMessageProps[] = $state([
     {
@@ -183,40 +204,57 @@
   }
 </script>
 
-<main class="app-conversation-layout__main" id="main-content">
-  <div class="app-conversation-layout__wrapper app-conversation-layout__width-restrictor">
-    
+<main class="app-conversation-layout__main">
+  <div 
+    bind:this={scrollContainer} 
+    use:autoScroll
+    class="app-conversation-layout__wrapper app-conversation-layout__width-restrictor"
+  >
     {#if isLiveChat}
-      <div class="govuk-inset-text" style="margin-top: 0; border-color: #1d70b8;">
-        <p class="govuk-body"><strong>Live Chat:</strong> You are now connected to a human advisor.</p>
+      <div class="govuk-inset-text handoff-banner">
+        <p class="govuk-body"><strong>Live Chat:</strong> Connected to advisor.</p>
+        <button class="govuk-button govuk-button--warning" onclick={() => socket?.close()}>End</button>
       </div>
     {/if}
 
     <ConversationMessageContainer {messages} />
+  </div>
 
-    <QuestionForm onSend={handleSendMessage} />
-
+  <div class="app-conversation-layout__fixed-footer app-conversation-layout__width-restrictor">
     {#if isLoading}
-      <div class="govuk-body govuk-hint p-4">
-        OJ Agent is typing...
-      </div>
+      <div class="govuk-body govuk-hint govuk-!-margin-bottom-2">GOV.UK Onward Journey Agent is typing...</div>
     {/if}
-    
+    <QuestionForm onSend={handleSendMessage} />
   </div>
 </main>
 
 <style>
-  .app-conversation-layout__main {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-  }
+.app-conversation-layout__main {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 100px); /* Lock height to viewport [cite: 40] */
+  overflow: hidden; /* Prevent page scroll [cite: 41] */
+}
 
-  .app-conversation-layout__wrapper {
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-  }
+.app-conversation-layout__wrapper {
+  flex: 1; /* Take all available middle space [cite: 42] */
+  overflow-y: auto; /* Enable internal scrolling [cite: 43] */
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-conversation-layout__fixed-footer {
+  background: white;
+  border-top: 1px solid #b1b4b6;
+  padding: 15px 0;
+}
+
+.handoff-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0;
+  border-color: #1d70b8;
+}
 </style>
