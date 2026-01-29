@@ -1,7 +1,18 @@
 import re
 import numpy as np
 import pandas as pd
-from typing import List, Tuple, Dict
+
+from typing import List, Tuple, Dict, Optional
+from pydantic                 import BaseModel
+
+class SearchResult(BaseModel):
+    url: str
+    score: float
+    document_type: str
+    title: str
+    description: Optional[str]
+    heading_hierarchy: list[str]
+    html_content: str
 
 def extract_and_standardize_phone(text: str) -> str:
     """
@@ -31,18 +42,35 @@ def extract_and_standardize_phone(text: str) -> str:
 
     return 'NOT_FOUND' # Consistent misclassification label
 
-def get_encoded_labels_and_mapping(
-    y_true: List[str], y_pred: List[str]
-) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, str], List[int]]:
-    """Encodes string labels into integer codes and generates UID labels."""
+def get_encoded_labels_and_mapping(y_true, y_pred, custom_all_labels=None, semantic_mapping=None):
+    """
+    Standardizes label encoding for the confusion matrix.
 
-    all_labels                    = pd.Series(y_true + y_pred).astype(str).unique()
-    codes, unique_original_labels = pd.factorize(all_labels)
+    Args:
+        y_true (list): Standardized ground truth labels.
+        y_pred (list): Standardized predicted labels.
+        custom_all_labels (list): The global set of labels (including UNKNOWN) for consistent axes.
+        semantic_mapping (dict): Optional mapping from phone/UID to a friendly name.
+    """
+    # 1. Use the provided global set, or derive from input if not provided
+    if custom_all_labels is None:
+        all_unique_labels = sorted(list(set(y_true + y_pred)))
+    else:
+        all_unique_labels = sorted(custom_all_labels)
 
-    label_to_code = {label: code for code, label in enumerate(unique_original_labels)}
-    uid_labels    = [f"UID_{code}" for code in range(len(unique_original_labels))]
-    label_to_uid  = {label: uid_labels[code] for label, code in label_to_code.items()}
+    # 2. Create the integer mapping (codes) for sklearn's confusion_matrix
+    label_to_code = {label: i for i, label in enumerate(all_unique_labels)}
 
-    y_true_encoded = np.array([label_to_code[label] for label in y_true])
-    y_pred_encoded = np.array([label_to_code.get(label, -1) for label in y_pred])
-    return y_true_encoded, y_pred_encoded, uid_labels, label_to_uid, codes
+    # 3. Encode the input lists
+    y_true_encoded = [label_to_code[label] for label in y_true]
+    y_pred_encoded = [label_to_code[label] for label in y_pred]
+
+    # 4. Create semantic display labels for the chart axes
+    if semantic_mapping:
+        # Map the phone/UID to a name, defaulting to the value itself if not found
+        display_labels = [semantic_mapping.get(label, label) for label in all_unique_labels]
+    else:
+        display_labels = all_unique_labels
+
+    # Return everything needed for the confusion matrix and plotting
+    return y_true_encoded, y_pred_encoded, display_labels, label_to_code, list(label_to_code.values())

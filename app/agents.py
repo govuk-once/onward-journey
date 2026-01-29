@@ -1,399 +1,424 @@
 import json
 import numpy as np
 import boto3
+import os
 
+from typing                   import List, Dict, Any, Optional
 from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers    import SentenceTransformer
+from opensearchpy             import OpenSearch
+from dotenv                   import load_dotenv
 
-from typing import List, Dict, Any, Optional
+from helpers                  import SearchResult
+
+load_dotenv()
+
+import asyncio
+import websockets
+import uuid
+
+def default_handoff():
+    return {'handoff_agent_id': 'GOV.UK Chat', 'final_conversation_history': []}
 
 class OnwardJourneyAgent:
-    """
-    Agent designed to take a handoff package, initialize with specialized tools/data,
-    and immediately continue the user's journey based on the previous context.
-    """
-    def __init__(self, handoff_package: dict,
-                       vector_store_embeddings : np.ndarray,
-                       vector_store_embeddings_text_chunks: list[str],
-                       embedding_model : SentenceTransformer,
-                       aws_role_arn: Optional[str] = None,
-                       model_name: str = 'anthropic.claude-3-7-sonnet-20250219-v1:0',
-                       aws_region: str = 'eu-west-2',
-                       aws_role_session_name : str = 'onward-journey-inference',
-                       temperature: float = 0.0,
-                       verbose: bool = False,
-                       seed: int = 1,
-                       top_K: int = 3):
+    def __init__(self,
+                 handoff_package: dict,
+                 vector_store_embeddings: np.ndarray,
+                 vector_store_chunks: list[str],
+                 embedding_model:str = "amazon.titan-embed-text-v2:0",
+                 model_name: str = "anthropic.claude-3-7-sonnet-20250219-v1:0",
+                 aws_region: str = 'eu-west-2',
+                 temperature: float = 0.0,
+                 strategy: int = 4,
+                 top_K_OJ: int = 3,
+                 top_K_govuk: int = 1,
+                 verbose: bool = False):
 
-        # declare tools for bedrock
+        self.verbose = verbose
+        self.client = boto3.client(service_name="bedrock-runtime", region_name=aws_region)
+
+        # Local KB (Onward Journey)
+        self.embeddings = vector_store_embeddings
+        self.chunk_data = vector_store_chunks
+
+        self.model_name      = model_name
+        self.embedding_model = embedding_model
+        self.temperature     = temperature
+        self.top_K_OJ        = top_K_OJ
+        self.top_K_govuk     = top_K_govuk
+
+        # Remote KB (GOV.UK OpenSearch)
+        self.os_client = OpenSearch(
+            hosts=[os.getenv("OPENSEARCH_URL")],
+            http_auth=(os.getenv("OPENSEARCH_USERNAME"), os.getenv("OPENSEARCH_PASSWORD"))
+        )
+        self.os_index = 'govuk_chat_chunked_content'
+
+        # State & History
+        self.handoff_package = handoff_package
+        self.history: List[Dict[str, Any]] = []
+
+        self.strategy = strategy
+
+        self._filter_tools_by_strategy()
+
         self._tool_declarations()
 
-        # initial aws bedrock client and role assumption
-        self._initialise_aws(aws_region, role_arn=aws_role_arn, role_session_name=aws_role_session_name)
-
-        # Clarification finite state
-        self.awaiting_clarification: bool = False
-
-        # Model configuration
-        self.model_name      = model_name
-        self.temperature     = temperature
-
-        # Store the handoff package for processing
-        self.handoff_package = handoff_package
-
-        # Define available tools and their names
-        self.specialized_tools = [self.query_csv_rag]
-        self.available_tools   = {f.__name__: f for f in self.specialized_tools}
-        self.top_K             = top_K
-
-
-        # Accessibility to vector store embeddings, vector store text chunk equivalents and vector store embedding model to embed user queries
-        self.embeddings      = vector_store_embeddings
-        self.chunk_data      = vector_store_embeddings_text_chunks
-        self.embedding_model = embedding_model
-
-        # Seed for reproducibility
-        self.seed            = seed
-
-        # Specialized System Instruction for onward journey agent
         self.system_instruction = (
                     "You are the **Onward Journey Agent**. Your sole purpose is to process "
-                    "and complete the user's request. **Your priority is correctness.** "
+                    "and help with the user's request. **Your priority is aiding and clarifying until you have all the information needed to provide a final answer.** "
+                    "This includes:"
                     "1. **Ambiguity Check:** If the user's request is ambiguous or requires a specific detail (e.g., 'Tax Credits'), your first turn **MUST BE A TEXT RESPONSE** asking a single, specific clarifying question. **DO NOT CALL THE TOOL YET.** "
-                    "2. **Tool Use:** If the request is clear, OR if the user has just provided the clarification, you must call the `query_csv_rag` tool to find the answer. "
-                    "3. **Final Answer:** After the tool call is complete, provide the final, grounded answer." \
-                    "Make sure your responses are formatted well for the user to read."
+                    "2. **Tool Use:** If the request is clear, OR if the user has just provided the clarification, you must call the `query_internal_kb` and/or `query_govuk_kb` tools to find answers to the user query. "
+                    "3. **Final Answer:** After the tool call(s) is/are complete, provide the final, grounded answer unless clarification is needed." \
+                    "You have access to two knowledge bases which you can query using the tools provided. "
+                    "Make sure your responses are formatted well for the user to read." \
+                    "Always be looking to clarify if there is any ambiguity in the user's request."
+                    "You can use both tools if the query requires a cross-referenced answer."
+                    "If a phone number is provided, you must call the `connect_to_live_agent` tool to transfer the user to a live agent."
                                   )
-        # Verbosity for debugging
-        self.verbose = verbose
 
-        # Initialize conversation history
-        self.history: List[Dict[str, Any]] = [  ]
+    def _add_to_history(self, role: str, text: str = '', tool_calls: list = [], tool_results: list = []):
+        """Ensures content is always a list of valid dictionaries."""
+        message = {"role": role, "content": []}
 
-    def _initialise_aws(self, aws_region: str, role_arn: Optional[str], role_session_name: str):
-        if role_arn != None:
-            # Assume given role
-            try:
-                self.client = boto3.client(service_name="sts", region_name=aws_region)
-                assume_role_response = self.client.assume_role(
-                    RoleArn = role_arn,
-                    RoleSessionName = role_session_name
-                )
-                role_credentials = assume_role_response["Credentials"]
-            except:
-                raise ValueError(f"Failed to assume role %s using session name %s" % (role_arn, role_session_name))
+        # Text must be wrapped in a dictionary with a 'type' key
+        if text:
+            message["content"].append({"type": "text", "text": text})
 
-            try:
-                self.client = boto3.client(
-                    service_name="bedrock-runtime",
-                    region_name=aws_region,
-                    aws_access_key_id = role_credentials["AccessKeyId"],
-                    aws_secret_access_key = role_credentials["SecretAccessKey"],
-                    aws_session_token = role_credentials["SessionToken"]
-                )
-            except:
-                raise ValueError("Failed to initialize Bedrock client. Check your AWS configuration.")
+        # Tool calls from the model are already dictionaries
+        if tool_calls:
+            message["content"].extend(tool_calls)
 
+        # Tool results must be wrapped correctly
+        if tool_results:
+            message["content"].extend(tool_results)
+
+        self.history.append(message)
+
+    def _filter_tools_by_strategy(self):
+        """Adjust available tools based on the selected strategy."""
+        if self.strategy == 1:
+            # Only use Internal KB
+            self.available_tools = {
+                "query_internal_kb": self.query_internal_kb
+            }
+        elif self.strategy == 2:
+            # Only use GOV.UK KB
+            self.available_tools = {
+                "query_govuk_kb": self.query_govuk_kb
+            }
+        elif self.strategy == 4:
+            # Only use Internal KB and Live Chat
+            self.available_tools = {
+                "query_internal_kb": self.query_internal_kb,
+                "connect_to_live_agent": self.connect_to_live_chat
+            }
+        # Strategy 3 uses both tools, so no change needed
         else:
-            # Use credentials from environment and config files without assuming a role
-            try:
-                self.client = boto3.client(service_name="bedrock-runtime", region_name=aws_region)
-            except:
-                raise ValueError("Failed to initialize Bedrock client. Check your AWS configuration.")
-        return
-    def _tool_declarations(self):
-
-        self.query_csv_declaration = {
-            "name": "query_csv_rag",
-            "description": "Performs a RAG search on internal data...",
-            "input_schema": {
-                            "type": "object",
-                            "properties": {
-                                            "user_query": {
-                                                            "type": "string",
-                                            "description": "The user's specific natural language request..."
-                                                          }
-                                          },
-                            "required": ["user_query"],
-                          },
+            self.available_tools = {
+            "query_internal_kb": self.query_internal_kb,
+            "query_govuk_kb": self.query_govuk_kb
         }
-
-        self.bedrock_tools = [
-            self.query_csv_declaration
-        ]
-
         return
 
-    def _add_to_history(self, role: str, content: Optional[str] = None, tool_calls: Optional[List[Dict]] = None, tool_results: Optional[List[Dict]] = None):
-            """Adds a message to the internal history list in Bedrock format."""
-            message: Dict[str, Any] = {"role": role, "content": []}
+    def _get_embedding(self, text: str) -> List[float]:
+        """Standardized embedding for all KBs."""
+        body = json.dumps({
+            "inputText": text,
+            "dimensions": 1024,
+            "normalize": True
+        })
+        response = self.client.invoke_model(
+            modelId=self.embedding_model,
+            body=body,
+            contentType='application/json',
+            accept='application/json'
+        )
+        return json.loads(response.get('body').read()).get('embedding', [])
 
-            if content:
-                message['content'].append({"type": "text", "text": content})
+    def _send_message_and_tools(self, prompt: str) -> str:
+        self._add_to_history("user", prompt)
 
-            if tool_calls:
-                for call in tool_calls:
-                    message['content'].append(call)
-
-            if tool_results:
-                for result in tool_results:
-                    message['content'].append(result)
-
-            # Only append messages that have actual content
-            if message['content']:
-                self.history.append(message)
-
-    def _send_message_and_handle_tools(self, prompt: str) -> str:
-        """
-        Sends a message to the Bedrock model and handles tool calls in a loop.
-        """
-        # Add the new user prompt to history
-        self._add_to_history(role="user", content=prompt)
-
-        # Handle clarification state
-        if self.awaiting_clarification:
-            self.awaiting_clarification = False
-            if self.verbose:
-                print("Clarification received from user. Proceeding to tool call.")
-
-        response_text = ""
-        # The loop condition is based on whether the last model response contained tool use
         while True:
-            # Prepare the request body for the Bedrock API
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
-                "messages": self.history,
                 "system": self.system_instruction,
+                "messages": self.history,
                 "max_tokens": 4096,
                 "temperature": self.temperature,
-                "tools": self.bedrock_tools,
+                "tools": self.bedrock_tools
             }
 
-            # Send the request to Bedrock
-            bedrock_response = self.client.invoke_model(
-                modelId=self.model_name,
-                body=json.dumps(body),
-                contentType='application/json',
-                accept='application/json'
-            )
+            resp = self.client.invoke_model(modelId=self.model_name, body=json.dumps(body))
+            resp_body = json.loads(resp['body'].read())
 
-            # Parse the response
-            response_body = json.loads(bedrock_response.get('body').read())
+            content = resp_body.get('content', [])
+            text = next((c['text'] for c in content if c['type'] == 'text'), None)
+            tool_use = [c for c in content if c['type'] == 'tool_use']
 
-            model_content = response_body.get('content', [])
+            if self.verbose:
+                print('BODY IS', body)
+                print('RESPONSE BODY IS', resp_body)
+                print('TEXT IS', text)
+                print('TOOL USE IS', tool_use)
+            self._add_to_history("assistant", text, tool_calls=tool_use)
 
-            # Extract Text or Tool Calls
-            tool_calls   = [c for c in model_content if c.get('type') == 'tool_use']
-            text_content = next((c.get('text') for c in model_content if c.get('type') == 'text'), None)
+            if not tool_use:
+                return text or "I encountered an error."
 
-            # Add the model's response to history
-            self._add_to_history(role="assistant", content=text_content, tool_calls=tool_calls)
+            results = []
+            for call in tool_use:
+                func = self.available_tools[call['name']]
 
-            # if no tool calls and text content is present and we were not awaiting clarification
-            if not tool_calls and text_content and not self.awaiting_clarification:
-                # Model responds with text and we were not awaiting clarification
-                if self.verbose:
-                    print("Onward Journey Agent detects ambiguity. Returning clarification question.")
-                self.awaiting_clarification = True
-                return text_content
-            if not tool_calls:
-                response_text = text_content if text_content else "I couldn't generate a response."
-                break
+                args = call['input']
+                out  = func(**args)
 
-            # Execute Tools and prepare results for history
-            tool_results_for_history = []
+                results.append({
+                    "type": "tool_result",
+                    "tool_use_id": call['id'],
+                    "content": [{"type": "text", "text": out}]
+                })
 
-            for call in tool_calls:
-                tool_use_id   = call['id'] # Unique ID for this tool use
-                function_name = call['name'] # The tool to call
-                args          = call['input'] # 'input' holds the arguments for the tool
+            self._add_to_history("user", tool_results=results)
 
-                if self.verbose:
-                    print(f"Onward Journey requests tool call: {function_name}({args})")
+    def connect_to_live_chat(self, reason: str):
 
-                # Execute the tool if it's available
-                if function_name in self.available_tools:
-                    tool_function = self.available_tools[function_name]
-                    tool_result = tool_function(**args)
+        deployment_id = os.getenv('GENESYS_DEPLOYMENT_ID')
+        region        = os.getenv('GENESYS_REGION', 'euw2.pure.cloud')
+        uri           = f"wss://webmessaging.{region}/v1?deploymentId={deployment_id}"
 
-                    if self.verbose:
-                        print(f"Tool execution result: {tool_result}")
+        async def chat_relay():
+            session_token = str(uuid.uuid4())
 
-                    # Prepare the result in the Bedrock 'tool_result' format
-                    tool_results_for_history.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": [
-                            {"type": "text", "text": str(tool_result)}
-                        ]
-                    })
-                else:
-                    if self.verbose:
-                        print(f"Warning: Model attempted to call unauthorized tool: {function_name}")
-                    tool_results_for_history.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": [
-                            {"type": "text", "text": f"Tool '{function_name}' is not allowed."}
-                        ]
-                    })
+            async with websockets.connect(uri) as ws:
+                # initial handshake
+                await ws.send(json.dumps({
+                    "action": "configureSession",
+                    "deploymentId": deployment_id,
+                    "token": session_token
+                }))
 
-            # Add the tool results to history and continue the loop for the next LLM turn
-            self._add_to_history(role="user", tool_results=tool_results_for_history)
+                # wait for session to be ready
+                while True:
+                    raw_init = await ws.recv()
+                    init_data = json.loads(raw_init)
+                    if init_data.get("class") == "SessionResponse" and init_data.get("code") == 200:
+                        print('\n*** System: Session Ready. ***')
+                        break
 
-            # Loop continues: The next iteration of the while loop sends the history
-            # including the tool results back to the model.
+                # initial message to live agent
+                # This 'customAttributes' section is what the Participant Data block reads.
+                await ws.send(json.dumps({
+                    "action": "onMessage",
+                    "token" : session_token,
+                    "message": {
+                        "type": "Text",
+                        "text": "Transferring to a human agent...",
+                        "metadata": {
+                            "customAttributes": {
+                                "name": "Onward Journey Agent",
+                                "HandoffReason": reason,
+                                "LastTopic": self.history[-1].get('topic', 'General') if self.history else 'General'
+                            }
+                        }
+                    }
+                }))
+                async def handle_rx():
+                    try:
+                        async for message in ws:
+                            data = json.loads(message)
 
-        return response_text
+                            if data.get("class") == "StructuredMessage":
+                                body = data.get("body", {})
+                                text = body.get("text")
+                                direction = body.get("direction")
 
-    def process_handoff(self) -> str:
+
+                                if text and direction == "Outbound":
+                                    # \r clears the current line where "You: " is sitting
+                                    print(f"\rOnward Journey Agent: {text}")
+                                    # Re-print the prompt for the next user input
+                                    print("You: ", end="", flush=True)
+
+                    except websockets.ConnectionClosed:
+                        print("\n[SYSTEM] Connection closed.")
+
+                async def handle_tx():
+                    while True:
+
+                        user_resp = await asyncio.to_thread(input, "You: ")
+
+                        if not user_resp.strip():
+                            continue
+
+                        if user_resp.lower() in ["exit", "quit"]:
+                            await ws.close()
+                            break
+
+                        await ws.send(json.dumps({
+                            "action": "onMessage",
+                            "token" : session_token,
+                            "message": {"type": "Text", "text": user_resp}
+                        }))
+
+                await asyncio.gather(handle_rx(), handle_tx())
+
+        try:
+            asyncio.run(chat_relay())
+        except KeyboardInterrupt:
+            pass
+        return "Conversation transferred to live agent."
+
+    def _tool_declarations(self):
         """
-        Processes the initial handoff data to generate the first specialized response.
+        Dynamically sets self.bedrock_tools based on the active strategy.
+        1: OJ KB only, 2: GOVUK KB only, 3: Both.
         """
+        # 1. Define the Onward Journey Tool
+        oj_tool = {
+            "name": "query_internal_kb",
+            "description": "Search specialized internal Onward Journey data for journey-specific status and private guidance.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The natural language request for internal data."}
+                },
+                "required": ["query"],
+            },
+        }
+
+        # 2. Define the GOV.UK Tool
+        govuk_tool = {
+            "name": "query_govuk_kb",
+            "description": "Search public GOV.UK policy, legislation, and public-facing government services.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The natural language request for public policy."}
+                },
+                "required": ["query"],
+            },
+        }
+
+        livechat_tool = {
+            "name": "connect_to_live_agent",
+            "description": "Call this tool if the user requires human assistance or if the query involves a phone number that requires a live transfer.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "reason": {"type": "string", "description": "The reason for the handoff."}
+                },
+                "required": ["reason"],
+            },
+        }
+
+
+        # 3. Filter based on Strategy
+        if self.strategy == 1:
+            self.bedrock_tools = [oj_tool]
+        elif self.strategy == 2:
+            self.bedrock_tools = [govuk_tool]
+
+        elif self.strategy == 4:
+            self.bedrock_tools = [oj_tool, livechat_tool]
+
+        else:
+            # Strategy 3 or default: provide both tools
+            self.bedrock_tools = [oj_tool, govuk_tool]
+
         if self.verbose:
-            print("\n" + "=" * 50)
-            print(f"Agent Processing Handoff from: {self.handoff_package['handoff_agent_id']}")
+            active_tool_names = [t['name'] for t in self.bedrock_tools]
+            print(f"DEBUG: Strategy {self.strategy} active. Tools available: {active_tool_names}")
 
-        # Bedrock's history starts fresh with this complex handoff message
-        context_prompt = (
-                f"Previous conversation history: {json.dumps(self.handoff_package['final_conversation_history'])}. "
-                f"The user's final request is: {self.handoff_package['next_agent_prompt']}. "
-                "Please analyze the history and fulfill the user's request, using your specialized tools if necessary."
-            )
-        print('User: ', self.handoff_package['next_agent_prompt'])
+    def query_internal_kb(self, query: str) -> str:
+        """Local RAG search."""
+        query_vec = np.array(self._get_embedding(query)).reshape(1, -1)
+        sims = cosine_similarity(query_vec, self.embeddings)[0]
+        top_idx = sims.argsort()[-self.top_K_OJ:][::-1]
+        return "Internal Context:\n" + "\n".join([self.chunk_data[i] for i in top_idx])
+    def query_govuk_kb(self, query: str) -> str:
+        """OpenSearch RAG search."""
+        search_body = {
+            "size": self.top_K_govuk,
+            "query": {"knn": {"titan_embedding": {"vector": self._get_embedding(query), "k": self.top_K_govuk}}}
+        }
+        resp = self.os_client.search(index=self.os_index, body=search_body)
 
-        # Use the internal send method to process the handoff, which manages history
-        first_response = self._send_message_and_handle_tools(context_prompt)
+        results = []
+        for hit in resp["hits"]["hits"]:
+            result = hit["_source"]
+            result["url"] = f"https://www.gov.uk{result['exact_path']}"
+            result["score"] = hit["_score"]
+            results.append(SearchResult(**result))
 
-        return first_response
+        return 'Retrieved GOV.UK Context:\n' + "\n".join(
+            [f"Title: {res.title}\nURL: {res.url}\nDescription: {res.description or 'N/A'}\nScore: {res.score}\n"
+             for res in results]
+        ) if results else "No GOV.UK info found."
 
-    def run_conversation(self)-> None:
+    def process_handoff(self)-> Optional[str]:
         """
-        Runs the full conversation: handles the handoff first, then starts the
-        interactive loop with the user.
+        Processes handoff context with three specific tool-use strategies:
+        1: Use OJ KB only (Ignore GOVUK)
+        2: Use GOVUK KB only (Ignore OJ)
+        3: Use both (Standard autonomous mode)
         """
-        # TODO: self.process_handoff() not yet implemented
+        history = self.handoff_package.get('final_conversation_history', [])
 
-        # Display the specialized agent's first response
-        print("\n" + "-" * 100)
-        print("You are now speaking with the Onward Journey Agent.")
-        #print(f"Onward Journey Agent: {first_response}")
-        print("-" * 100 + "\n")
+        if not history:
+            if self.verbose:
+                print("Handoff history is empty. Treating as a standard chat.")
+            return None # avoid LLM hallucinating an empty string
 
-        # 2. Start the interactive loop
-        while True:
-            user_input = input("You: ")
+        history_str = json.dumps(history)
 
-            # Allow user to end the conversation
-            if user_input.strip().lower() in ["quit", "exit", "end"]:
-                print("\n👋 Conversation with Onward Journey Agent ended.")
-                break
+        # Strategy-specific constraints
+        constraints = {
+            1: "CRITICAL: You must ONLY use the 'query_internal_kb' tool for this initial turn.",
+            2: "CRITICAL: You must ONLY use the 'query_govuk_kb' tool for this initial turn.",
+            3: "CRITICAL: Use both 'query_internal_kb', 'query_govuk_kb' to answer."
+        }
 
-            if not user_input.strip():
-                continue
+        selected_constraint = constraints.get(self.strategy, constraints[3])
+        initial_prompt = (
+            f"Previous conversation history: {history_str}. "
+            f"INSTRUCTION: Based on the history above, provide the next response to the user. "
+            f"{selected_constraint}\n"
+        "If the history is insufficient to provide a grounded answer, ask a clarifying question."
+        )
+        return self._send_message_and_tools(initial_prompt)
 
-            # Send the new user message and handle any tool calls it triggers
-            llm_response = self._send_message_and_handle_tools(user_input)
-            print(f"\n Onward Journey Agent: {llm_response}\n")
-
-    def query_csv_rag(self, user_query: str) -> str:
-        """
-        Performs Retrieval Augmented Generation (RAG) on internal CSV data.
-        Use this tool to answer user queries on available data.
-
-        Args:
-            user_query (str): The user's specific request (e.g., "Tell me about tax").
-
-        Returns:
-            str: A string containing the top K most relevant text chunks (context).
-        """
-        if self.embeddings is None:
-            return "RAG system is not initialized. Cannot access data."
-
-        # 1. Embed the user query
-        query_embedding = self.embedding_model.encode(user_query)
-
-        # 2. Perform Similarity Search (Retrieval)
-        # Compute cosine similarity between the query and all chunk embeddings
-        similarity_scores = cosine_similarity(
-            query_embedding.reshape(1, -1),
-            self.embeddings
-        )[0]
-
-        # Get the indices of the top K relevant chunks
-        top_indices = similarity_scores.argsort()[-self.top_K:][::-1]
-
-        # 3. Augment Context
-        retrieved_chunks = [self.chunk_data[i] for i in top_indices]
-
-        # 4. Return Context for LLM Generation
-        context_string = "\n".join(retrieved_chunks)
-
-        # The model receives this context and uses it to answer the user_query
-        return f"Retrieved Context:\n{context_string}"
-
-    def get_forced_response(self, user_query: str) -> str:
+    def run_conversation(self) -> None:
             """
-            Processes a single user query by forcing the LLM to call the RAG tool
-            immediately, bypassing the Clarification Logic. Used for quantitative testing.
+            Interactive terminal loop that mirrors the original functionality
+            but uses the new unified multi-tool logic.
             """
+            # Display the specialized agent's first response
+            print("\n" + "-" * 100)
+            print("You are now speaking with the Onward Journey Agent.")
+            #print(f"Onward Journey Agent: {first_response}")
+            print("-" * 100 + "\n")
 
-            # force system instruction to call tool immediately
-            forced_system_instruction = (
-                "You are the **Onward Journey Agent**. Your sole goal is to answer the user's query. "
-                "**CRITICAL RULE: YOU MUST NOT ASK CLARIFYING QUESTIONS.** "
-                "Analyze the user query. You must call the 'query_csv_rag' tool immediately with the "
-                "best possible query argument to retrieve context. ONLY output the final, grounded "
-                "answer after the tool call is complete."
-            )
+            # Handle handoff if history exists
+            if self.handoff_package.get('final_conversation_history'):
+                print("Processing context from previous agent...")
+                initial_response = self.process_handoff()
+                print(f"\nAgent: {initial_response}\n")
 
-            initial_messages = [{"role": "user", "content": [{"type": "text", "text": user_query}]}]
+            # Standard interactive loop
+            while True:
+                try:
+                    user_input = input("You: ").strip()
 
-            body1 = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "messages": initial_messages,
-                "system": forced_system_instruction,
-                "max_tokens": 4096,
-                "temperature": self.temperature,
-                "tools": self.bedrock_tools,
-            }
+                    if user_input.lower() in ["exit", "quit", "end"]:
+                        print("\n👋 Conversation with Onward Journey Agent ended.")
+                        break
 
-            # First LLM Call to get Tool Call
-            bedrock_response1 = self.client.invoke_model(modelId=self.model_name, body=json.dumps(body1))
-            response_body1 = json.loads(bedrock_response1.get('body').read())
+                    if not user_input:
+                        continue
 
-            model_content1 = response_body1.get('content', [])
-            tool_calls = [c for c in model_content1 if c.get('type') == 'tool_use']
+                    response = self._send_message_and_tools(user_input)
+                    print(f"\n Onward Journey Agent: {response}\n")
 
-            if not tool_calls:
-                return "ERROR: LLM failed to call tool despite explicit instruction."
-
-            # Execute Tool and Get Final Answer
-            function_call = tool_calls[0]
-            tool_output = self.query_csv_rag(function_call['input']['user_query'])
-
-            tool_result_part = {
-                "type": "tool_result",
-                "tool_use_id": function_call['id'],
-                "content": [{"type": "text", "text": tool_output}]
-            }
-
-            history_with_tool_output = [
-                {"role": "user", "content": [{"type": "text", "text": user_query}]},
-                {"role": "assistant", "content": [function_call]},
-                {"role": "user", "content": [tool_result_part]}
-            ]
-
-            body2 = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "messages": history_with_tool_output,
-                "system": forced_system_instruction,
-                "max_tokens": 4096,
-                "temperature": self.temperature,
-            }
-            # Second LLM Call to get Final Response
-            bedrock_response2 = self.client.invoke_model(modelId=self.model_name, body=json.dumps(body2))
-            response_body2 = json.loads(bedrock_response2.get('body').read())
-            # Extract final text content
-            final_text_content = next((c.get('text') for c in response_body2.get('content', []) if c.get('type') == 'text'), None)
-            return final_text_content if final_text_content else "Error generating final response after forced tool call."
+                except KeyboardInterrupt:
+                    break

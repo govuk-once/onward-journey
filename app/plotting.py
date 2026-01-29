@@ -1,29 +1,28 @@
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
-
+import pandas as pd
 from typing import List
 
-def plot_uid_confusion_matrix(cm: np.ndarray, uid_labels: List[str], accuracy: float, title: str):
+def plot_uid_confusion_matrix(cm_array, labels, accuracy, title="Confusion Matrix"):
     """
-    Plots the confusion matrix, returns the Matplotlib figure object.
+    Plots a confusion matrix using Service Names and ensures labels are formatted correctly.
     """
-    # Create the figure and axes objects explicitly (recommended practice)
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(12, 10))
 
-    cm_df = pd.DataFrame(cm, index=uid_labels, columns=uid_labels)
+    # Use a heatmap with integer formatting for counts
+    sns.heatmap(cm_array, annot=True, fmt='d', cmap='Blues', ax=ax,
+                xticklabels=labels, yticklabels=labels, cbar=False)
 
-    # Use ax=ax to tell seaborn where to draw the heatmap
-    sns.heatmap(cm_df, annot=True, fmt='d', cmap='Blues', linewidths=.5, linecolor='black', ax=ax)
+    ax.set_title(f"{title}\nOverall Accuracy: {accuracy:.2%}", pad=20)
+    ax.set_xlabel('Predicted Service', labelpad=15)
+    ax.set_ylabel('True Service', labelpad=15)
 
-    ax.set_title(f"{title}\nOverall Accuracy: {accuracy:.2%}")
-    ax.set_xlabel('Predicted UID Label', fontsize=12)
-    ax.set_ylabel('Actual UID Label', fontsize=12)
+    # Rotate tick labels to prevent "eating" into the plot
+    plt.xticks(rotation=45, ha='right', rotation_mode='anchor')
+    plt.yticks(rotation=0)
 
-    plt.setp(ax.get_xticklabels(), rotation=90, ha="center", rotation_mode="anchor")
-    plt.setp(ax.get_yticklabels(), rotation=0, ha="right")
+    # Adjust layout to make room for long labels
+    plt.tight_layout()
 
-    fig.tight_layout()
-
-    # Returns the figure object
     return fig

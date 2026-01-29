@@ -61,14 +61,15 @@ def load_test_queries(file_path: str) -> list[dict]:
 def save_test_results(
     cm_df        : pd.DataFrame,
     fig          : plt.Figure,
-    output_dir   : str = "test_output/prototype2"
+    output_dir   : str = "test_output/prototype2",
+    file_suffix  : str = "",
 ) -> None:
     """Saves the test artifacts to the fixed output directory."""
 
     os.makedirs(output_dir, exist_ok=True)
-    cm_df.to_csv(os.path.join(output_dir, "confusion_matrix_uid.csv"))
+    cm_df.to_csv(os.path.join(output_dir, f"confusion_matrix_uid{file_suffix}.csv"))
 
-    plot_file_path = os.path.join(output_dir, "confusion_matrix_plot.png")
+    plot_file_path = os.path.join(output_dir, f"confusion_matrix_plot{file_suffix}.png")
     fig.savefig(plot_file_path)
 
     plt.close(fig)
