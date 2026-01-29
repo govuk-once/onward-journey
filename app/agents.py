@@ -13,7 +13,6 @@ from helpers                  import SearchResult
 load_dotenv()
 
 import asyncio
-import websockets
 import uuid
 
 def default_handoff():
