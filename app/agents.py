@@ -74,7 +74,7 @@ class OnwardJourneyAgent:
                     "Make sure your responses are formatted well for the user to read." \
                     "Always be looking to clarify if there is any ambiguity in the user's request."
                     "You can use both tools if the query requires a cross-referenced answer."
-                    "If a phone number is provided, you must call the `connect_to_live_agent` tool to transfer the user to a live agent."
+                    "If a phone number is provided, you must call the `connect_to_live_chat` tool to transfer the user to a live agent."
                                   )
 
     def _add_to_history(self, role: str, text: str = '', tool_calls: list = [], tool_results: list = []):
@@ -111,7 +111,7 @@ class OnwardJourneyAgent:
             # Only use Internal KB and Live Chat
             self.available_tools = {
                 "query_internal_kb": self.query_internal_kb,
-                "connect_to_live_agent": self.connect_to_live_chat
+                "connect_to_live_chat": self.connect_to_live_chat
             }
         # Strategy 3 uses both tools, so no change needed
         else:
