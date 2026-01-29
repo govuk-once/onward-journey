@@ -217,3 +217,19 @@ infrastructure/local.auto.tfvars
 
 # zsh
 .zshrc
+
+# Lambda build artifacts
+dist_package/
+rds_seeder_payload.zip
+orchestrator_payload.zip
+
+# Lambda invocation responses
+response_*.json
+
+# Terraform local state backups
+errored.tfstate
+*.tfstate.backup
+
+# Python cache
+__pycache__/
+*.pyc

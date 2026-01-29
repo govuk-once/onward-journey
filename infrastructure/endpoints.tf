@@ -38,7 +38,7 @@ resource "aws_vpc_endpoint" "s3" {
   vpc_endpoint_type = "Gateway"
 
   # Gateway endpoints are "routed" via the route table
-  route_table_ids = data.aws_route_tables.private.ids
+  route_table_ids = local.private_route_table_ids
 
   tags = { Name = "${var.environment}-s3-endpoint" }
 }

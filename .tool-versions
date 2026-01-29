@@ -1,6 +1,7 @@
 # List of tool versions used in this project
 # Compatible with mise-en-place or asdf for easy installation and management
-awscli 2.32.10
-terraform 1.13.5
+awscli     2.32.10
+terraform  1.13.5
 pre-commit 4.5.0
-uv 0.9.16
+uv         0.9.16
+python     3.12

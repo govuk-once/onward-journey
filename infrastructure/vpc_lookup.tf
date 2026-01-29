@@ -24,6 +24,11 @@ data "aws_vpc" "active" {
   id = local.vpc_exists ? data.aws_vpcs.existing.ids[0] : aws_vpc.main.id
 }
 
+# Pull fresh details for the active VPC to access the main_route_table_id attribute.
+data "aws_vpc" "selected" {
+  id = data.aws_vpc.active.id
+}
+
 # Discover the 'app-private' tier subnets for placing Lambda and RDS instances.
 data "aws_subnets" "private" {
   filter {
@@ -36,12 +41,9 @@ data "aws_subnets" "private" {
   }
 }
 
-# Find the route tables for the private subnets to attach the S3 Gateway
-data "aws_route_tables" "private" {
-  vpc_id = data.aws_vpc.active.id
-
-  filter {
-    name   = "tag:Name"
-    values = ["*-app-pvt-*"]
-  }
+# Consolidate the IDs into a unique list
+locals {
+  # Use the main route table ID. This ensures the S3 Gateway is attached
+  # to the routing path used by our subnets (implicit association).
+  private_route_table_ids = [data.aws_vpc.selected.main_route_table_id]
 }

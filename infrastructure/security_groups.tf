@@ -33,33 +33,28 @@ resource "aws_security_group" "vpc_endpoints" {
   description = "Private interface for the Orchestrator to reach Bedrock and Secrets Manager"
   vpc_id      = data.aws_vpc.active.id
 
-  # Only traffic originating from the Orchestrator's Security Group is permitted.
-  ingress {
-    description     = "HTTPS from Orchestrator"
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.orchestrator.id]
-  }
-
   tags = {
     Name = "${var.environment}-vpc-endpoints-sg"
   }
 }
 
+# Ingress rule allowing HTTPS traffic from the Orchestrator to VPC Endpoints.
+resource "aws_security_group_rule" "allow_orchestrator_to_endpoints" {
+  description              = "HTTPS from Orchestrator"
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.vpc_endpoints.id
+  source_security_group_id = aws_security_group.orchestrator.id
+}
+
 # RDS METADATA STORE SECURITY GROUP
+# Firewall for the RDS instance hosting department contact metadata.
 resource "aws_security_group" "rds_metadata" {
   name        = "${var.environment}-rds-metadata-sg"
   description = "Allows the Orchestrator to query the Department Contacts database"
   vpc_id      = data.aws_vpc.active.id
-
-  ingress {
-    description     = "PostgreSQL from Orchestrator"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.orchestrator.id]
-  }
 
   egress {
     description = "Allow all outbound"
@@ -69,5 +64,60 @@ resource "aws_security_group" "rds_metadata" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "${var.environment}-rds-metadata-sg" }
+  tags = {
+    Name = "${var.environment}-rds-metadata-sg"
+  }
+}
+
+# Ingress rule allowing PostgreSQL traffic from the Orchestrator to RDS.
+resource "aws_security_group_rule" "allow_orchestrator_to_rds" {
+  description              = "PostgreSQL from Orchestrator"
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds_metadata.id
+  source_security_group_id = aws_security_group.orchestrator.id
+}
+
+# RDS SEEDER SECURITY GROUP
+# Isolated group for the Lambda function responsible for initial database seeding.
+resource "aws_security_group" "rds_seeder_sg" {
+  name        = "${var.environment}-rds-seeder-sg"
+  description = "Allows the Seeder Lambda to reach RDS and AWS Services"
+  vpc_id      = data.aws_vpc.active.id
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.environment}-rds-seeder-sg"
+  }
+}
+
+# Ingress rule allowing the RDS Seeder to perform database operations.
+resource "aws_security_group_rule" "allow_seeder_to_rds" {
+  description              = "Allow seeding traffic from the RDS Seeder"
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds_metadata.id
+  source_security_group_id = aws_security_group.rds_seeder_sg.id
+}
+
+# Ingress rule allowing the RDS Seeder to reach AWS service endpoints.
+resource "aws_security_group_rule" "allow_seeder_to_endpoints" {
+  description              = "Allow seeder to reach Bedrock/SecretsManager endpoints"
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.vpc_endpoints.id
+  source_security_group_id = aws_security_group.rds_seeder_sg.id
 }
