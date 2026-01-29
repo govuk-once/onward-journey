@@ -1,0 +1,29 @@
+tables:
+  - name: "dept_contacts"
+    source_file: "mock_rag_data.csv"
+    primary_key: "id"
+    columns:
+      uid: "TEXT"
+      service_name: "TEXT"
+      department: "TEXT"
+      tags: "TEXT"
+      description: "TEXT"
+      embedding: "VECTOR(1024)"
+    embedding_source_cols: # Define which columns should be combined to create the embedding
+      [
+        "department",
+        "service_name",
+        "topic",
+        "tags",
+        "description",
+        "user_type",
+      ]
+
+  - name: "interaction_memory"
+    source_file: "interaction_memory.csv"
+    columns:
+      intent_type: "TEXT"
+      user_query_pattern: "TEXT"
+      verified_response: "TEXT"
+      handling_strategy: "TEXT"
+      # No embedding column here means this table stays as plain text

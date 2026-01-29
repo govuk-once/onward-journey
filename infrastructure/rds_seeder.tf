@@ -3,9 +3,12 @@
 # To add a new data source, simply add a key-value pair to this map.
 
 locals {
+  # Parse the YAML file into a Terraform object
+  seed_config = yamldecode(file("${path.module}/seed_config.yaml"))
+
+  # Dynamically build the trigger map: { "mock_rag_data.csv" = "dept_contacts" }
   data_sources = {
-    "mock_rag_data.csv" = "dept_contacts"
-    # "future_data.csv" = "future_table"
+    for table in local.seed_config.tables : table.source_file => table.name
   }
 }
 
@@ -19,9 +22,9 @@ resource "terraform_data" "rds_sync_trigger" {
     table_name = each.value
   }
 
-  # Terraform calculates the hash of the local file to detect changes
   triggers_replace = [
-    filemd5("${path.module}/../mock_data/${each.key}")
+    filemd5("${path.module}/../mock_data/${each.key}"), # Re-seed if the hash of the local file changes
+    filemd5("${path.module}/seed_config.yaml")          # Re-seed if the YAML definition changes
   ]
 
   # Targeted invocation: passing the specific file and table as a JSON payload

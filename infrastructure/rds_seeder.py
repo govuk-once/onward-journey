@@ -21,7 +21,15 @@ def lambda_handler(event, context):
     target_file = event["file_name"]
     target_table = event["table_name"]
 
-    # Initialize service clients
+    # Load the master configuration provided by Terraform as a JSON string
+    config = json.loads(os.environ["DB_CONFIG"])
+
+    # Locate the specific table definition from our YAML configuration
+    table_conf = next((t for t in config["tables"] if t["name"] == target_table), None)
+    if not table_conf:
+        raise Exception(f"Configuration for table '{target_table}' not found in YAML.")
+
+    # Initialise service clients
     s3 = boto3.client("s3")
     bedrock = boto3.client("bedrock-runtime")
 
@@ -34,103 +42,88 @@ def lambda_handler(event, context):
         password=os.environ["DB_PASSWORD"],
         port=5432,
         timeout=120,
-        tcp_keepalive=True,
+        tcp_keepalive=True,  # Prevents VPC timeouts on long-running ingestions
     )
 
     try:
-        # Start transaction manually
+        # Wrap everything in a transaction for atomicity
         conn.run("BEGIN")
 
-        # Ensure vector support
+        # Ensure pgvector extension is available in the database
         conn.run("CREATE EXTENSION IF NOT EXISTS vector;")
 
-        # Nuke the old table (removes locks and old data)
-        print(f"Refreshing table: {target_table}")
+        # 1. TABLE INITIALIZATION
+        # To ensure the database matches the latest YAML/CSV schema, we drop
+        # the existing table and recreate it. This removes stale data and locks.
+        columns = table_conf["columns"]
+        col_definitions = ", ".join(
+            [f"{name} {dtype}" for name, dtype in columns.items()]
+        )
+
+        print(f"Initialising/recreating table: {target_table}")
         conn.run(f"DROP TABLE IF EXISTS {target_table} CASCADE;")
+        conn.run(
+            f"CREATE TABLE {target_table} (id SERIAL PRIMARY KEY, {col_definitions});"
+        )
 
-        # Create/re-create the schema
-        if target_table == "dept_contacts":
-            print(f"Creating schema for {target_table}...")
-            conn.run(
-                f"""
-                CREATE TABLE {target_table} (
-                    id SERIAL PRIMARY KEY,
-                    uid TEXT,
-                    service_name TEXT,
-                    department TEXT,
-                    phone_number TEXT,
-                    topic TEXT,
-                    user_type TEXT,
-                    tags TEXT,
-                    url TEXT,
-                    description TEXT,
-                    embedding VECTOR(1024)
-                );
-            """
-            )
-
-        # Fetch source data from S3 using the prefix defined in s3.tf
+        # 2. FETCH SOURCE DATA
         print(f"Fetching source data from S3: mock/{target_file}")
-        s3_response = s3.get_object(
+        s3_res = s3.get_object(
             Bucket=os.environ["BUCKET_NAME"], Key=f"mock/{target_file}"
         )
 
-        # 'utf-8-sig' handles potential Byte Order Marks (BOM) from Excel exports
-        lines = s3_response["Body"].read().decode("utf-8-sig").splitlines()
+        # 'utf-8-sig' handles potential Byte Order Marks (BOM) from Excel CSV exports
+        lines = s3_res["Body"].read().decode("utf-8-sig").splitlines()
         reader = csv.DictReader(lines)
+
+        # 3. DYNAMIC INGESTION & EMBEDDING
+        embed_cols = table_conf.get("embedding_source_cols", [])
 
         print(f"Starting ingestion for {target_table}...")
         for i, row in enumerate(reader):
-            if target_table == "dept_contacts":
+            # Map CSV row data to the columns defined in the YAML
+            # 'embedding' is excluded here as it is calculated via Bedrock below
+            params = {
+                name: row.get(name) for name in columns.keys() if name != "embedding"
+            }
+
+            # Semantic Embedding Logic
+            # If the schema defines an 'embedding' column and source columns are provided:
+            if "embedding" in columns and embed_cols:
                 # Construct a descriptive context string for high-quality vector embeddings
-                text_to_embed = (
-                    f"Department: {row['department']}. "
-                    f"Service: {row['service_name']}. "
-                    f"Topic: {row['topic']}. "
-                    f"Keywords: {row['tags']}. "
-                    f"Detailed Description: {row['description']}"
+                # Concatenating columns specified in the YAML 'embedding_source_cols'
+                text_to_embed = ". ".join(
+                    [f"{col.capitalize()}: {row.get(col, '')}" for col in embed_cols]
                 )
 
-                # Attempt to get vectors from Bedrock
+                # Invoke Bedrock to generate a 1024-dimension vector
                 vector = get_embedding(bedrock, text_to_embed)
 
-                # --- MOCK FALLBACK (Commented out for future testing) ---
-                # Use a dummy vector of 1024 zeros until Bedrock connection issue resolved
-                # vector = [0.0] * 1024
+                # Format for pgvector input: [val1, val2, ...]
+                params["emb"] = "[" + ",".join(map(str, vector)) + "]"
 
-                # Format for pgvector [val1, val2, ...]
-                vector_string = "[" + ",".join(map(str, vector)) + "]"
+            # Build Dynamic INSERT statement based on the active parameter map
+            col_names = ", ".join(params.keys()).replace("emb", "embedding")
+            placeholders = ", ".join([f":{k}" for k in params.keys()])
 
-                # Insert processed record and vector into the database
-                conn.run(
-                    f"""INSERT INTO {target_table}
-                    (uid, service_name, department, phone_number, topic, user_type, tags, url, description, embedding)
-                    VALUES (:u, :s, :d, :p, :t, :ut, :tg, :url, :desc, :emb)""",
-                    u=row["uid"],
-                    s=row["service_name"],
-                    d=row["department"],
-                    p=row["phone_number"],
-                    t=row["topic"],
-                    ut=row["user_type"],
-                    tg=row["tags"],
-                    url=row["url"],
-                    desc=row["description"],
-                    emb=vector_string,
-                )
+            conn.run(
+                f"INSERT INTO {target_table} ({col_names}) VALUES ({placeholders})",
+                **params,
+            )
 
-                # Log progress every 5 rows to monitor Lambda health in CloudWatch
-                if i % 5 == 0:
-                    print(f"Successfully processed {i} rows...")
+            # Log progress to monitor health and runtime in CloudWatch
+            if i % 10 == 0:
+                print(f"Successfully processed {i} rows for {target_table}...")
 
-        # Commit only if everything succeeded
+        # Commit only if every row in the file was processed successfully
         conn.run("COMMIT")
-        print(f"Ingestion complete. Total rows processed: {i + 1}")
-        return {"status": "success", "table": target_table}
+        print(f"Ingestion complete for {target_table}. Total rows processed: {i + 1}")
+        return {"status": "success", "table": target_table, "rows_processed": i + 1}
 
     except Exception as e:
-        # Roll back if any row fails
+        # Roll back the transaction if any row or embedding call fails
         conn.run("ROLLBACK")
-        print(f"ERROR: {str(e)}")
+        print(f"DATABASE ERROR: {str(e)}")
         raise e
     finally:
         conn.close()

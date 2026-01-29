@@ -1,0 +1,6 @@
+intent_type,user_query_pattern,verified_response,handling_strategy
+recovery_missing_details,user asks about tax without specifying a type,I can help with that. Are you asking about Self Assessment, Income Tax, or perhaps Inheritance Tax?,FORCE_SLOT_FILL: tax_type
+recovery_wrong_dept,user asks DVLA about HMRC services (e.g. Child Benefit),The DVLA handles vehicle tax. For Child Benefit queries, you need to contact HMRC. Would you like their number?,RECOVERY_REDIRECT
+reinforcement_agent,user identifies as a tax agent,As an authorised agent, you should use the Agent Dedicated Lines for faster service. Which tax regime are you calling about?,PATTERN: AGENT_PRIORITY
+reinforcement_emergency,user reports environmental damage or flooding,For environmental emergencies like river damage or pollution, please use the Environment Agency incident hotline immediately.,PATTERN: URGENT_ROUTING
+reinforcement_bereavement,user mentions a death or deceased estate,I am sorry for your loss. HMRC has specialist teams for bereavement and deceased estates. I can find the right helpline for you.,EMPATHY_BUFFER

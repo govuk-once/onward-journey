@@ -21,6 +21,7 @@ resource "aws_lambda_function" "rds_seeder" {
 
   environment {
     variables = {
+      DB_CONFIG   = jsonencode(local.seed_config)
       DB_HOST     = aws_db_instance.dept_contacts_metadata.address
       DB_NAME     = aws_db_instance.dept_contacts_metadata.db_name
       DB_USER     = aws_db_instance.dept_contacts_metadata.username
