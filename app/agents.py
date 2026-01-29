@@ -1,4 +1,4 @@
-import json
+import json 
 import numpy as np
 import boto3
 import os
@@ -138,7 +138,6 @@ class OnwardJourneyAgent:
 
     def _send_message_and_tools(self, prompt: str) -> str:
         self._add_to_history("user", prompt)
-
         while True:
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
@@ -148,6 +147,13 @@ class OnwardJourneyAgent:
                 "temperature": self.temperature,
                 "tools": self.bedrock_tools
             }
+            
+            resp = self.client.invoke_model(modelId=self.model_name, body=json.dumps(body))
+            resp_body = json.loads(resp['body'].read())
+            
+            content = resp_body.get('content', [])
+            text = next((c['text'] for c in content if c['type'] == 'text'), None)
+            tool_use = [c for c in content if c['type'] == 'tool_use']
 
             resp = self.client.invoke_model(modelId=self.model_name, body=json.dumps(body))
             resp_body = json.loads(resp['body'].read())
@@ -301,7 +307,7 @@ class OnwardJourneyAgent:
         }
 
         livechat_tool = {
-            "name": "connect_to_live_agent",
+            "name": "connect_to_live_chat",
             "description": "Call this tool if the user requires human assistance or if the query involves a phone number that requires a live transfer.",
             "input_schema": {
                 "type": "object",
