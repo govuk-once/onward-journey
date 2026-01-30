@@ -13,8 +13,6 @@
     reason: string;
   }
 
-  import { tick } from 'svelte';
-
   let scrollContainer: HTMLElement | undefined = $state();
 
   // This function (action) will run whenever the element is created or updated
