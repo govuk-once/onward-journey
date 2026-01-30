@@ -1,8 +1,6 @@
 import re
-import numpy as np
-import pandas as pd
 
-from typing import List, Tuple, Dict, Optional
+from typing import Optional
 from pydantic                 import BaseModel
 
 class SearchResult(BaseModel):

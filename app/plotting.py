@@ -5,6 +5,7 @@ import pandas as pd
 from typing import List
 
 def plot_uid_confusion_matrix(cm_array, labels, accuracy, title="Confusion Matrix"):
+def plot_uid_confusion_matrix(cm_array, labels, accuracy, title="Confusion Matrix"):
     """
     Plots a confusion matrix using Service Names and ensures labels are formatted correctly.
     """

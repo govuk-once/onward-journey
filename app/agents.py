@@ -2,7 +2,9 @@ import json
 import numpy as np
 import boto3
 import os
+import os
 
+from typing                   import List, Dict, Any, Optional
 from typing                   import List, Dict, Any, Optional
 from sklearn.metrics.pairwise import cosine_similarity
 from opensearchpy             import OpenSearch
@@ -13,7 +15,6 @@ from helpers                  import SearchResult
 load_dotenv()
 
 import asyncio
-import websockets
 import uuid
 
 def default_handoff():
@@ -42,6 +43,7 @@ class OnwardJourneyAgent:
 
         self.model_name      = model_name
         self.embedding_model = embedding_model
+        self.embedding_model = embedding_model
         self.temperature     = temperature
         self.top_K_OJ        = top_K_OJ
         self.top_K_govuk     = top_K_govuk
@@ -54,7 +56,16 @@ class OnwardJourneyAgent:
         self.os_index = 'govuk_chat_chunked_content'
 
         # State & History
+        # State & History
         self.handoff_package = handoff_package
+        self.history: List[Dict[str, Any]] = []
+
+        self.strategy = strategy
+
+        self._filter_tools_by_strategy()
+
+        self._tool_declarations()
+
         self.history: List[Dict[str, Any]] = []
 
         self.strategy = strategy
@@ -65,6 +76,8 @@ class OnwardJourneyAgent:
 
         self.system_instruction = (
                     "You are the **Onward Journey Agent**. Your sole purpose is to process "
+                    "and help with the user's request. **Your priority is aiding and clarifying until you have all the information needed to provide a final answer.** "
+                    "This includes:"
                     "and help with the user's request. **Your priority is aiding and clarifying until you have all the information needed to provide a final answer.** "
                     "This includes:"
                     "1. **Ambiguity Check:** If the user's request is ambiguous or requires a specific detail (e.g., 'Tax Credits'), your first turn **MUST BE A TEXT RESPONSE** asking a single, specific clarifying question. **DO NOT CALL THE TOOL YET.** "
@@ -136,24 +149,19 @@ class OnwardJourneyAgent:
         )
         return json.loads(response.get('body').read()).get('embedding', [])
 
-    def _send_message_and_tools(self, prompt: str) -> str:
-        self._add_to_history("user", prompt)
+    async def _send_message_and_tools(self, prompt: str) -> str:
+        self._add_to_history("user", prompt) #
+
         while True:
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
-                "system": self.system_instruction,
+                "system": self.system_instruction, #
+                "messages": self.history,
                 "messages": self.history,
                 "max_tokens": 4096,
                 "temperature": self.temperature,
                 "tools": self.bedrock_tools
             }
-            
-            resp = self.client.invoke_model(modelId=self.model_name, body=json.dumps(body))
-            resp_body = json.loads(resp['body'].read())
-            
-            content = resp_body.get('content', [])
-            text = next((c['text'] for c in content if c['type'] == 'text'), None)
-            tool_use = [c for c in content if c['type'] == 'tool_use']
 
             resp = self.client.invoke_model(modelId=self.model_name, body=json.dumps(body))
             resp_body = json.loads(resp['body'].read())
@@ -162,22 +170,25 @@ class OnwardJourneyAgent:
             text = next((c['text'] for c in content if c['type'] == 'text'), None)
             tool_use = [c for c in content if c['type'] == 'tool_use']
 
-            if self.verbose:
-                print('BODY IS', body)
-                print('RESPONSE BODY IS', resp_body)
-                print('TEXT IS', text)
-                print('TOOL USE IS', tool_use)
-            self._add_to_history("assistant", text, tool_calls=tool_use)
+            self._add_to_history("assistant", text, tool_calls=tool_use) #
 
             if not tool_use:
                 return text or "I encountered an error."
 
             results = []
+            handoff_signal = None 
+
             for call in tool_use:
                 func = self.available_tools[call['name']]
-
                 args = call['input']
-                out  = func(**args)
+                
+                if asyncio.iscoroutinefunction(func):
+                    out = await func(**args)
+                else:
+                    out = func(**args)
+
+                if call['name'] == "connect_to_live_chat":
+                    handoff_signal = out 
 
                 results.append({
                     "type": "tool_result",
@@ -185,95 +196,45 @@ class OnwardJourneyAgent:
                     "content": [{"type": "text", "text": out}]
                 })
 
+
             self._add_to_history("user", tool_results=results)
 
-    def connect_to_live_chat(self, reason: str):
+            # If we have a handoff signal, we stop the loop here and return
+            # This prevents a second invoke_model call that might fail or lose the signal
+            if handoff_signal:
 
-        deployment_id = os.getenv('GENESYS_DEPLOYMENT_ID')
-        region        = os.getenv('GENESYS_REGION', 'euw2.pure.cloud')
-        uri           = f"wss://webmessaging.{region}/v1?deploymentId={deployment_id}"
+                final_body = body.copy()
+                final_body["messages"] = self.history
+                
+                final_resp = self.client.invoke_model(modelId=self.model_name, body=json.dumps(final_body))
+                final_resp_body = json.loads(final_resp['body'].read())
+                final_text = next((c['text'] for c in final_resp_body.get('content', []) if c['type'] == 'text'), "Transferring...")
+                
+                return f"{final_text}\n\n{handoff_signal}"
 
-        async def chat_relay():
-            session_token = str(uuid.uuid4())
+    async def connect_to_live_chat(self, reason: str):
+        """
+        Returns handoff configuration for the frontend. 
+        """
 
-            async with websockets.connect(uri) as ws:
-                # initial handshake
-                await ws.send(json.dumps({
-                    "action": "configureSession",
-                    "deploymentId": deployment_id,
-                    "token": session_token
-                }))
+        history = self.history 
+        summary = f"User is asking about: {reason}."
 
-                # wait for session to be ready
-                while True:
-                    raw_init = await ws.recv()
-                    init_data = json.loads(raw_init)
-                    if init_data.get("class") == "SessionResponse" and init_data.get("code") == 200:
-                        print('\n*** System: Session Ready. ***')
-                        break
-
-                # initial message to live agent
-                # This 'customAttributes' section is what the Participant Data block reads.
-                await ws.send(json.dumps({
-                    "action": "onMessage",
-                    "token" : session_token,
-                    "message": {
-                        "type": "Text",
-                        "text": "Transferring to a human agent...",
-                        "metadata": {
-                            "customAttributes": {
-                                "name": "Onward Journey Agent",
-                                "HandoffReason": reason,
-                                "LastTopic": self.history[-1].get('topic', 'General') if self.history else 'General'
-                            }
-                        }
-                    }
-                }))
-                async def handle_rx():
-                    try:
-                        async for message in ws:
-                            data = json.loads(message)
-
-                            if data.get("class") == "StructuredMessage":
-                                body = data.get("body", {})
-                                text = body.get("text")
-                                direction = body.get("direction")
+        user_queries = [c['text'] for m in history for c in m['content'] if m['role'] == 'user' and c['type'] == 'text']
+        summary += "Summary of previous turns: " + " | ".join(user_queries[-3:])
 
 
-                                if text and direction == "Outbound":
-                                    # \r clears the current line where "You: " is sitting
-                                    print(f"\rOnward Journey Agent: {text}")
-                                    # Re-print the prompt for the next user input
-                                    print("You: ", end="", flush=True)
 
-                    except websockets.ConnectionClosed:
-                        print("\n[SYSTEM] Connection closed.")
-
-                async def handle_tx():
-                    while True:
-
-                        user_resp = await asyncio.to_thread(input, "You: ")
-
-                        if not user_resp.strip():
-                            continue
-
-                        if user_resp.lower() in ["exit", "quit"]:
-                            await ws.close()
-                            break
-
-                        await ws.send(json.dumps({
-                            "action": "onMessage",
-                            "token" : session_token,
-                            "message": {"type": "Text", "text": user_resp}
-                        }))
-
-                await asyncio.gather(handle_rx(), handle_tx())
-
-        try:
-            asyncio.run(chat_relay())
-        except KeyboardInterrupt:
-            pass
-        return "Conversation transferred to live agent."
+        handoff_config = {
+            "action": "initiate_live_handoff",
+            "deploymentId": os.getenv('GENESYS_DEPLOYMENT_ID'),
+            "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
+            "token": str(uuid.uuid4()),
+            "reason": reason,
+            "summary": summary
+        }
+        
+        return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
 
     def _tool_declarations(self):
         """
@@ -362,7 +323,7 @@ class OnwardJourneyAgent:
              for res in results]
         ) if results else "No GOV.UK info found."
 
-    def process_handoff(self)-> Optional[str]:
+    async def process_handoff(self)-> Optional[str]:
         """
         Processes handoff context with three specific tool-use strategies:
         1: Use OJ KB only (Ignore GOVUK)
@@ -392,7 +353,7 @@ class OnwardJourneyAgent:
             f"{selected_constraint}\n"
         "If the history is insufficient to provide a grounded answer, ask a clarifying question."
         )
-        return self._send_message_and_tools(initial_prompt)
+        return await self._send_message_and_tools(initial_prompt)
 
     def run_conversation(self) -> None:
             """

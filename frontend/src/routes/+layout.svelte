@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolve } from "$app/paths";
 	import GovUKLogo from "$lib/components/GovUKLogo.svelte";
-	import "../app.scss";
+  import "../app.scss";
 
 	let { children } = $props();
 </script>
