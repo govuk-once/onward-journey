@@ -135,7 +135,6 @@ class OnwardJourneyAgent:
         )
         return json.loads(response.get('body').read()).get('embedding', [])
 
-
     async def _send_message_and_tools(self, prompt: str) -> str:
         self._add_to_history("user", prompt) #
 
@@ -202,12 +201,22 @@ class OnwardJourneyAgent:
         """
         Returns handoff configuration for the frontend. 
         """
+
+        history = self.history 
+        summary = f"User is asking about: {reason}."
+
+        user_queries = [c['text'] for m in history for c in m['content'] if m['role'] == 'user' and c['type'] == 'text']
+        summary += "Summary of previous turns: " + " | ".join(user_queries[-3:])
+
+
+
         handoff_config = {
             "action": "initiate_live_handoff",
             "deploymentId": os.getenv('GENESYS_DEPLOYMENT_ID'),
             "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
             "token": str(uuid.uuid4()),
-            "reason": reason
+            "reason": reason,
+            "summary": summary
         }
         
         return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
@@ -299,7 +308,7 @@ class OnwardJourneyAgent:
              for res in results]
         ) if results else "No GOV.UK info found."
 
-    def process_handoff(self)-> Optional[str]:
+    async def process_handoff(self)-> Optional[str]:
         """
         Processes handoff context with three specific tool-use strategies:
         1: Use OJ KB only (Ignore GOVUK)
@@ -329,7 +338,7 @@ class OnwardJourneyAgent:
             f"{selected_constraint}\n"
         "If the history is insufficient to provide a grounded answer, ask a clarifying question."
         )
-        return self._send_message_and_tools(initial_prompt)
+        return await self._send_message_and_tools(initial_prompt)
 
     def run_conversation(self) -> None:
             """
@@ -339,7 +348,6 @@ class OnwardJourneyAgent:
             # Display the specialized agent's first response
             print("\n" + "-" * 100)
             print("You are now speaking with the Onward Journey Agent.")
-            #print(f"Onward Journey Agent: {first_response}")
             print("-" * 100 + "\n")
 
             # Handle handoff if history exists
