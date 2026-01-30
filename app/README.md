@@ -92,6 +92,20 @@ uv run main.py test \
     --test_data ../test_data/prototype2/test_queries_large_80.json \
 ```
 
+#### C. Frontend Chat Interaction (Demo-ing)
+
+You will need two terminal windows; one to run the backend and the other for the frontend.
+
+In the first, navigate to the "app" folder and run:
+```shell
+gds-cli aws once-onwardjourney-development-admin -- uv run uvicorn chat_server:app --reload
+```
+In the second, navigate to the "frontend" folder and run:
+```shell
+npm run dev 
+```
+Once these have been run and are hosted, go to a browser and go to http://localhost:6173/ . There you can interact with the Onward Journey Agent as a user. 
+
 #### Key Components and AWS Integration
 
 ##### 1. Bedrock Integration (`agents.py`)

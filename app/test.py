@@ -112,6 +112,7 @@ class Evaluator:
         Groups results by Topic and generates the Confusion Matrix.
         """
         # 1. Ground Truth: Use the 'topic' column directly from the dataframe
+        print(df)
         y_true = df['topic'].fillna("UNKNOWN / FAILURE").tolist()
 
         # 2. Prediction: Map the agent's extracted phone back to a topic

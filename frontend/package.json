@@ -32,7 +32,7 @@
 	},
 	"license": "MIT",
 	"engines": {
-		"node": ">= 25",
+		"node": ">= 24",
 		"npm": "^11.6.2"
 	},
 	"dependencies": {

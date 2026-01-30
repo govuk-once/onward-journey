@@ -21,9 +21,3 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-
-# govuk-frontend assets
-static/assets/fonts
-static/assets/images
-static/assets/rebrand
-static/assets/manifest.json

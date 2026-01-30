@@ -109,6 +109,8 @@ def get_args(parser):
     # Optional argument for overriding the AWS region
     parser.add_argument('--region', type=str, default="eu-west-2",
                         help=f'AWS region to use for the Bedrock client (default: eu-west-2).')
+    parser.add_argument('--region', type=str, default="eu-west-2",
+                        help=f'AWS region to use for the Bedrock client (default: eu-west-2).')
 
     parser.add_argument('--output_dir', type=str, help='Directory to save test outputs.')
 
