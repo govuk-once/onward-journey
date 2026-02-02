@@ -78,8 +78,6 @@ class OnwardJourneyAgent:
                     "You are the **Onward Journey Agent**. Your sole purpose is to process "
                     "and help with the user's request. **Your priority is aiding and clarifying until you have all the information needed to provide a final answer.** "
                     "This includes:"
-                    "and help with the user's request. **Your priority is aiding and clarifying until you have all the information needed to provide a final answer.** "
-                    "This includes:"
                     "1. **Ambiguity Check:** If the user's request is ambiguous or requires a specific detail (e.g., 'Tax Credits'), your first turn **MUST BE A TEXT RESPONSE** asking a single, specific clarifying question. **DO NOT CALL THE TOOL YET.** "
                     "2. **Tool Use:** If the request is clear, OR if the user has just provided the clarification, you must call the `query_internal_kb` and/or `query_govuk_kb` tools to find answers to the user query. "
                     "3. **Final Answer:** After the tool call(s) is/are complete, provide the final, grounded answer unless clarification is needed." \
@@ -149,6 +147,7 @@ class OnwardJourneyAgent:
         )
         return json.loads(response.get('body').read()).get('embedding', [])
 
+    # orchestration of messaging and tool calling 
     async def _send_message_and_tools(self, prompt: str) -> str:
         self._add_to_history("user", prompt) #
 
@@ -212,30 +211,6 @@ class OnwardJourneyAgent:
                 
                 return f"{final_text}\n\n{handoff_signal}"
 
-    async def connect_to_live_chat(self, reason: str):
-        """
-        Returns handoff configuration for the frontend. 
-        """
-
-        history = self.history 
-        summary = f"User is asking about: {reason}."
-
-        user_queries = [c['text'] for m in history for c in m['content'] if m['role'] == 'user' and c['type'] == 'text']
-        summary += "Summary of previous turns: " + " | ".join(user_queries[-3:])
-
-
-
-        handoff_config = {
-            "action": "initiate_live_handoff",
-            "deploymentId": os.getenv('GENESYS_DEPLOYMENT_ID'),
-            "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
-            "token": str(uuid.uuid4()),
-            "reason": reason,
-            "summary": summary
-        }
-        
-        return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
-
     def _tool_declarations(self):
         """
         Dynamically sets self.bedrock_tools based on the active strategy.
@@ -297,6 +272,30 @@ class OnwardJourneyAgent:
             active_tool_names = [t['name'] for t in self.bedrock_tools]
             print(f"DEBUG: Strategy {self.strategy} active. Tools available: {active_tool_names}")
 
+    # tools for LLM 
+    async def connect_to_live_chat(self, reason: str):
+        """
+        Returns handoff configuration for the frontend. 
+        """
+
+        history = self.history 
+        summary = f"User is asking about: {reason}."
+
+        user_queries = [c['text'] for m in history for c in m['content'] if m['role'] == 'user' and c['type'] == 'text']
+        summary += "Summary of previous turns: " + " | ".join(user_queries[-3:])
+
+
+
+        handoff_config = {
+            "action": "initiate_live_handoff",
+            "deploymentId": os.getenv('GENESYS_DEPLOYMENT_ID'),
+            "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
+            "token": str(uuid.uuid4()),
+            "reason": reason,
+            "summary": summary
+        }
+        
+        return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
     def query_internal_kb(self, query: str) -> str:
         """Local RAG search."""
         query_vec = np.array(self._get_embedding(query)).reshape(1, -1)
