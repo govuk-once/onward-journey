@@ -15,8 +15,8 @@
   // --- State ---
   let scrollContainer: HTMLElement | undefined = $state(); 
   
-  // Renamed from 'messages' to 'chatMessages' to avoid SvelteKit reserved word conflict 
-  let { chatMessages = $bindable([]) } = $props(); 
+  let { data } = $props();
+  let chatMessages = $state(data.messages || []);
   
   let isLoading = $state(false); 
   let isLiveChat = $state(false); 
@@ -256,7 +256,7 @@
         </summary>
         <div class="govuk-details__text handoff-dropdown-container">
           <div class="history-list">
-            {#each handoffPackage.final_conversation_history as history}
+            {#each handoffPackage.final_conversation_history as history, i (i)}
               <p class="govuk-body-s">
                 <strong>{history.role === 'user' ? 'User' : 'GOV.UK Chat'}:</strong> 
                 {history.content[0].text}
