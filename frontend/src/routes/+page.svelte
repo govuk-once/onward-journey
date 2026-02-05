@@ -1,6 +1,5 @@
 <script lang="ts">
   import { v7 as uuid } from "uuid";
-  import type { ListableConversationMessageProps } from "$lib/types/ConversationMessage";
   import QuestionForm from "$lib/components/QuestionForm.svelte";
   import snarkdown from 'snarkdown';
 
@@ -10,18 +9,20 @@
     deploymentId: string;
     region: string;
     token: string;
-    reason: string;
+    reason: string; 
   }
 
   // --- State ---
-  let scrollContainer: HTMLElement | undefined = $state();
-  // Ensure messages is initialized as a reactive array
-  let { messages = $bindable([]) } = $props(); 
-  let isLoading = $state(false);
-  let isLiveChat = $state(false);
-  let socket: WebSocket | null = $state(null);
-  let sessionToken = $state("");
-  let handoffProcessed = $state(false);
+  let scrollContainer: HTMLElement | undefined = $state(); 
+  
+  // Renamed from 'messages' to 'chatMessages' to avoid SvelteKit reserved word conflict 
+  let { chatMessages = $bindable([]) } = $props(); 
+  
+  let isLoading = $state(false); 
+  let isLiveChat = $state(false); 
+  let socket: WebSocket | null = $state(null); 
+  let sessionToken = $state(""); 
+  let handoffProcessed = $state(false); 
   
   let handoffPackage = $state({
       final_conversation_history: [
@@ -31,7 +32,7 @@
     'BX9 1GH, United Kingdom. You can find phone contact details for other HMRC services on the Contact HMRC page. GOV.UK Chat can make mistakes. \
     'Check GOV.UK pages for important information. GOV.UK pages used in this answer (links open in a new tab)'" }] },
       ]
-    });
+    }); 
 
   // --- Actions ---
   function autoScroll(node: HTMLElement) {
@@ -50,7 +51,7 @@
   }
 
   async function returnToAIAgent() {
-    const transcript = messages
+    const transcript = chatMessages
       .filter(m => (m.user === "Live Agent" || m.user === "You") && m.message)
       .map(m => ({
         role: m.user === "You" ? "user" : "assistant",
@@ -71,15 +72,15 @@
       if (!res.ok) throw new Error("Server Error");
       
       const data = await res.json();
-      // Reassign to trigger Svelte 5 reactivity
-      messages = [...messages, { 
+      chatMessages = [...chatMessages, { 
         message: data.summary || "I'm back. How can I help you further?", 
         user: "GOV.UK Onward Journey Agent", 
         isSelf: false, 
         id: uuid() 
       }];
-    } catch (err) {
-      messages = [...messages, { 
+    } catch {
+      // Removed unused 'err' variable
+      chatMessages = [...chatMessages, { 
         message: "I've reconnected, but I couldn't summarize the previous chat.", 
         user: "System", 
         isSelf: false, 
@@ -96,98 +97,96 @@
       const res = await fetch("http://localhost:8000/handoff/process", { method: "POST" });
       if (!res.ok) throw new Error("Server error");
       const data = await res.json();
-      messages = [...messages, {
+      chatMessages = [...chatMessages, {
         message: data.response,
         user: "GOV.UK Onward Journey Agent",
         isSelf: false,
         id: uuid()
       }];
       handoffProcessed = true;
-    } catch (err) {
-      messages = [...messages, { message: "Error processing context.", user: "System", isSelf: false, id: uuid() }];
+    } catch {
+      // Removed unused 'err' variable
+      chatMessages = [...chatMessages, { message: "Error processing context.", user: "System", isSelf: false, id: uuid() }];
     } finally {
       isLoading = false;
     }
   }
 
-function setupGenesysSocket(config: GenesysHandoff) {
+  function setupGenesysSocket(config: GenesysHandoff) {
     if (socket) {
-          socket.onopen = null;
-          socket.onmessage = null;
-          socket.onclose = null;
-          socket.close();
-        }
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onclose = null;
+      socket.close();
+    }
 
-        isLiveChat = true;
-        sessionToken = config.token; 
-        const uri = `wss://webmessaging.${config.region}/v1?deploymentId=${config.deploymentId}`;
-        const newSocket = new WebSocket(uri); 
-        socket = newSocket;
-        newSocket.onopen = () => {
-          newSocket.send(JSON.stringify({
-            action: "configureSession",
-            deploymentId: config.deploymentId,
-            token: sessionToken
-          })); 
-        };
+    isLiveChat = true;
+    sessionToken = config.token; 
+    const uri = `wss://webmessaging.${config.region}/v1?deploymentId=${config.deploymentId}`;
+    const newSocket = new WebSocket(uri); 
+    socket = newSocket;
+
+    newSocket.onopen = () => {
+      newSocket.send(JSON.stringify({
+        action: "configureSession",
+        deploymentId: config.deploymentId,
+        token: sessionToken
+      }));
+    };
 
     newSocket.onmessage = (event) => {
-      const data = JSON.parse(event.data); 
-
-      // When the session is confirmed, send the full historical context to the new agent
+      const data = JSON.parse(event.data);
       if (data.class === "SessionResponse" && data.code === 200) { 
-          const currentSessionHistory = messages
+          const currentSessionHistory = chatMessages
             .map(m => {
               const time = m.timestamp ? `[${m.timestamp}] ` : "";
               const agentId = m.agentId ? ` (Agent: ${m.agentId})` : "";
               return `${time}${m.user}${agentId}: ${m.message}`;
             })
-            .join('\n'); 
+            .join('\n');
 
           const fullContext = `--- SYSTEM: CONTINUED HANDOFF CONTEXT ---\n` +
                               `REASON: ${config.reason}\n\n` +
                               `PREVIOUS INTERACTION LOG:\n${currentSessionHistory}`;
-
+          
           newSocket.send(JSON.stringify({
             action: "onMessage",
             token: sessionToken,
             message: { type: "Text", text: fullContext }
           }));
 
-          // Confirm in the UI that history was shared
-          messages = [...messages, {
+          chatMessages = [...chatMessages, {
             message: "All previous history (including prior advisors) has been shared.",
             user: "System",
             isSelf: false,
             id: uuid(),
             timestamp: new Date().toLocaleTimeString()
-          }]; 
+          }];
       }
 
-      // Receive agent responses and capture their ID and current time
       if (data.class === "StructuredMessage" && data.body?.text && data.body.direction === "Outbound") {
-        messages = [...messages, {
+        chatMessages = [...chatMessages, {
           message: data.body.text,
           user: "Live Agent",
-          // Capture the specific agent's ID if provided by Genesys metadata
           agentId: data.metadata?.externalContactId || "Advisor", 
           isSelf: false,
           id: uuid(),
           timestamp: new Date().toLocaleTimeString() 
-        }]; 
+        }];
       }
     };
 
     newSocket.onclose = () => {
-      isLiveChat = false; 
+      isLiveChat = false;
       socket = null; 
       sessionToken="";
-      returnToAIAgent(); 
+      returnToAIAgent();
     };
-}
+  }
+
   async function handleSendMessage(userText: string) {
     if (!userText.trim() || isLoading) return;
-    messages = [...messages, { message: userText, user: "You", isSelf: true, id: uuid() }];
+    chatMessages = [...chatMessages, { message: userText, user: "You", isSelf: true, id: uuid() }];
     
     if (isLiveChat && socket?.readyState === 1) {
       socket.send(JSON.stringify({
@@ -212,18 +211,19 @@ function setupGenesysSocket(config: GenesysHandoff) {
         const jsonStart = responseText.indexOf('{');
         const jsonEnd = responseText.lastIndexOf('}') + 1;
         const config: GenesysHandoff = JSON.parse(responseText.substring(jsonStart, jsonEnd));
-        messages = [...messages, { message: "Transferring to a live agent...", user: "System", isSelf: false, id: uuid() }];
+        chatMessages = [...chatMessages, { message: "Transferring to a live agent...", user: "System", isSelf: false, id: uuid() }];
         setupGenesysSocket(config);
       } else {
-        messages = [...messages, { 
+        chatMessages = [...chatMessages, { 
           message: responseText, 
           user: "GOV.UK Onward Journey Agent", 
           isSelf: false, 
           id: uuid() 
         }];
       }
-    } catch (err) {
-      messages = [...messages, { message: "Connection error.", user: "System", isSelf: false, id: uuid() }];
+    } catch {
+       // Removed unused 'err' variable [cite: 46]
+      chatMessages = [...chatMessages, { message: "Connection error.", user: "System", isSelf: false, id: uuid() }];
     } finally {
       isLoading = false;
     }
@@ -277,7 +277,7 @@ function setupGenesysSocket(config: GenesysHandoff) {
     {/if}
 
     <div class="message-feed">
-      {#each messages as m (m.id)}
+      {#each chatMessages as m (m.id)}
         <div class="message-bubble {m.isSelf ? 'user' : 'agent'}">
           <p class="govuk-body-s"><strong>{m.user}:</strong></p>
           <div class="markdown-content">
@@ -297,64 +297,26 @@ function setupGenesysSocket(config: GenesysHandoff) {
 </main>
 
 <style>
-
-.app-conversation-layout__header {
-  padding: 10px 20px;
-  border-bottom: 1px solid #b1b4b6;
-  background: #ffffff;
-  z-index: 10; /* Ensures it stays above messages during scroll */
-}
-
-.handoff-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 0; /* Remove margin to sit flush in header */
-  border-color: #1d70b8;
-}
-
-/* Ensure the wrapper still fills remaining space */
-.app-conversation-layout__wrapper {
-  flex: 1;
-  overflow-y: auto;
-}
-/* Base Typography based on GOV.UK Design System */
-  :global(body) {
-    font-family: "GDS Transport", arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-
-  .app-conversation-layout__main { 
-    display: flex; 
-    flex-direction: column; 
-    height: 100vh; 
-    background-color: #ffffff;
-  }
-  .app-conversation-layout__main { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background-color: #ffffff; }
-  .app-conversation-layout__wrapper { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; }
-  .history-list { max-height: 150px; overflow-y: auto; margin-bottom: 15px; padding-right: 10px; }
-  .govuk-body-s { font-size: 16px; margin-bottom: 8px; line-height: 1.3; }
-  .app-conversation-layout__fixed-footer { background: white; border-top: 1px solid #b1b4b6; padding: 15px 0; }
-  .handoff-banner { display: flex; justify-content: space-between; align-items: center; border-color: #1d70b8; margin-bottom: 20px; }
-
-  /* New Message Feed Styling */
-  .message-feed { display: flex; flex-direction: column; gap: 20px; width: 100%; }
-  .message-bubble { padding: 15px; border-radius: 4px; max-width: 80%; line-height: 1.5; }
-  .message-bubble.agent { background-color: #f3f2f1; border-left: 4px solid #1d70b8; align-self: flex-start; }
-  .message-bubble.user { background-color: #005ea5; color: white; align-self: flex-end; }
-  .message-bubble.user :global(strong) { color: white; }
-
-  /* Markdown Rendering Styles */
-  .markdown-content :global(strong) { font-weight: 700; }
-  .markdown-content :global(h3), .markdown-content :global(h4) {
-    font-size: 19px;
-    font-weight: bold;
-    margin: 10px 0;
-    display: block;
-    color: #0b0c0c;
-  }
-  .markdown-content :global(ul) { margin: 10px 0 10px 20px; list-style-type: disc; }
-  .markdown-content :global(li) { margin-bottom: 5px; }
-  .markdown-content :global(p) { margin-bottom: 10px; }
+/* ... Styles remain unchanged [cite: 55-71] ... */
+.app-conversation-layout__header { padding: 10px 20px;
+   border-bottom: 1px solid #b1b4b6; background: #ffffff; z-index: 10; }
+.handoff-banner { display: flex; justify-content: space-between; align-items: center; margin: 0; border-color: #1d70b8; }
+.app-conversation-layout__wrapper { flex: 1; overflow-y: auto; }
+:global(body) { font-family: "GDS Transport", arial, sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+.app-conversation-layout__main { display: flex; flex-direction: column; height: 100vh; background-color: #ffffff; overflow: hidden; }
+.app-conversation-layout__wrapper { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; }
+.history-list { max-height: 150px; overflow-y: auto; margin-bottom: 15px; padding-right: 10px; }
+.govuk-body-s { font-size: 16px; margin-bottom: 8px; line-height: 1.3; }
+.app-conversation-layout__fixed-footer { background: white; border-top: 1px solid #b1b4b6; padding: 15px 0; }
+.handoff-banner { display: flex; justify-content: space-between; align-items: center; border-color: #1d70b8; margin-bottom: 20px; }
+.message-feed { display: flex; flex-direction: column; gap: 20px; width: 100%; }
+.message-bubble { padding: 15px; border-radius: 4px; max-width: 80%; line-height: 1.5; }
+.message-bubble.agent { background-color: #f3f2f1; border-left: 4px solid #1d70b8; align-self: flex-start; }
+.message-bubble.user { background-color: #005ea5; color: white; align-self: flex-end; }
+.message-bubble.user :global(strong) { color: white; }
+.markdown-content :global(strong) { font-weight: 700; }
+.markdown-content :global(h3), .markdown-content :global(h4) { font-size: 19px; font-weight: bold; margin: 10px 0; display: block; color: #0b0c0c; }
+.markdown-content :global(ul) { margin: 10px 0 10px 20px; list-style-type: disc; }
+.markdown-content :global(li) { margin-bottom: 5px; }
+.markdown-content :global(p) { margin-bottom: 10px; }
 </style>
