@@ -89,7 +89,6 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
         id: uuid() 
       }];
     } catch {
-      // Removed unused 'err' variable
       chatMessages = [...chatMessages, { 
         message: "I've reconnected, but I couldn't summarize the previous chat.", 
         user: "System", 
@@ -115,7 +114,6 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
       }];
       handoffProcessed = true;
     } catch {
-      // Removed unused 'err' variable
       chatMessages = [...chatMessages, { message: "Error processing context.", user: "System", isSelf: false, id: uuid() }];
     } finally {
       isLoading = false;
@@ -232,7 +230,6 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
         }];
       }
     } catch {
-       // Removed unused 'err' variable [cite: 46]
       chatMessages = [...chatMessages, { message: "Connection error.", user: "System", isSelf: false, id: uuid() }];
     } finally {
       isLoading = false;
@@ -324,9 +321,4 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
 .message-bubble.agent { background-color: #f3f2f1; border-left: 4px solid #1d70b8; align-self: flex-start; }
 .message-bubble.user { background-color: #005ea5; color: white; align-self: flex-end; }
 .message-bubble.user :global(strong) { color: white; }
-.markdown-content :global(strong) { font-weight: 700; }
-.markdown-content :global(h3), .markdown-content :global(h4) { font-size: 19px; font-weight: bold; margin: 10px 0; display: block; color: #0b0c0c; }
-.markdown-content :global(ul) { margin: 10px 0 10px 20px; list-style-type: disc; }
-.markdown-content :global(li) { margin-bottom: 5px; }
-.markdown-content :global(p) { margin-bottom: 10px; }
 </style>
