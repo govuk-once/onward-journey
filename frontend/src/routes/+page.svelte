@@ -1,8 +1,7 @@
 <script lang="ts">
   import { v7 as uuid } from "uuid";
   import QuestionForm from "$lib/components/QuestionForm.svelte";
-  import snarkdown from 'snarkdown';
-import DOMPurify from 'dompurify';
+  import SvelteMarkdown from "svelte-markdown";
   // --- Interfaces ---
   interface GenesysHandoff {
     action: string;
@@ -24,8 +23,6 @@ import DOMPurify from 'dompurify';
   let sessionToken = $state(""); 
   let handoffProcessed = $state(false); 
   
-  const sanitize = (html: string) => DOMPurify.sanitize(html);
-
   let handoffPackage = $state({
       final_conversation_history: [
         { role: "user", content: [{ type: "text", text: "I'm trying to find the line for Pension Schemes." }] },
@@ -277,13 +274,13 @@ import DOMPurify from 'dompurify';
         </div>
       </details>
     {/if}
-
+    
     <div class="message-feed">
       {#each chatMessages as m (m.id)}
         <div class="message-bubble {m.isSelf ? 'user' : 'agent'}">
           <p class="govuk-body-s"><strong>{m.user}:</strong></p>
-          <div class="markdown-content">
-            {@html sanitize(snarkdown(m.message || ""))}
+            <div class="markdown-content">
+            <SvelteMarkdown source={m.message || ""} />
           </div>
         </div>
       {/each}
@@ -299,7 +296,7 @@ import DOMPurify from 'dompurify';
 </main>
 
 <style>
-/* ... Styles remain unchanged [cite: 55-71] ... */
+/* ... Styles ... */
 .app-conversation-layout__header { padding: 10px 20px;
    border-bottom: 1px solid #b1b4b6; background: #ffffff; z-index: 10; }
 .handoff-banner { display: flex; justify-content: space-between; align-items: center; margin: 0; border-color: #1d70b8; }
