@@ -11,12 +11,23 @@
     reason: string; 
   }
 
+  interface Message {
+    id: string;
+    user: string;
+    message: string;
+    isSelf: boolean;
+    timestamp?: string;
+    agentId?: string;
+  }
+  
+
+
   // --- State ---
   let scrollContainer: HTMLElement | undefined = $state(); 
   
-  let { data } = $props();
-  let chatMessages = $state(data.messages || []);
-  
+let { data }: { data: { messages?: Message[] } } = $props();
+let chatMessages = $state<Message[]>(data.messages ?? []);  
+
   let isLoading = $state(false); 
   let isLiveChat = $state(false); 
   let socket: WebSocket | null = $state(null); 
@@ -51,8 +62,8 @@
 
   async function returnToAIAgent() {
     const transcript = chatMessages
-      .filter(m => (m.user === "Live Agent" || m.user === "You") && m.message)
-      .map(m => ({
+      .filter( (m: Message) => (m.user === "Live Agent" || m.user === "You") && m.message)
+      .map( (m: Message) => ({
         role: m.user === "You" ? "user" : "assistant",
         text: m.message
       }));
@@ -137,7 +148,7 @@
       const data = JSON.parse(event.data);
       if (data.class === "SessionResponse" && data.code === 200) { 
           const currentSessionHistory = chatMessages
-            .map(m => {
+            .map((m: Message) => {
               const time = m.timestamp ? `[${m.timestamp}] ` : "";
               const agentId = m.agentId ? ` (Agent: ${m.agentId})` : "";
               return `${time}${m.user}${agentId}: ${m.message}`;
