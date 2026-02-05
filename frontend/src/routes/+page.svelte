@@ -2,7 +2,7 @@
   import { v7 as uuid } from "uuid";
   import QuestionForm from "$lib/components/QuestionForm.svelte";
   import snarkdown from 'snarkdown';
-
+import DOMPurify from 'dompurify';
   // --- Interfaces ---
   interface GenesysHandoff {
     action: string;
@@ -24,6 +24,8 @@
   let sessionToken = $state(""); 
   let handoffProcessed = $state(false); 
   
+  const sanitize = (html: string) => DOMPurify.sanitize(html);
+
   let handoffPackage = $state({
       final_conversation_history: [
         { role: "user", content: [{ type: "text", text: "I'm trying to find the line for Pension Schemes." }] },
@@ -281,7 +283,7 @@
         <div class="message-bubble {m.isSelf ? 'user' : 'agent'}">
           <p class="govuk-body-s"><strong>{m.user}:</strong></p>
           <div class="markdown-content">
-            {@html snarkdown(m.message || "")}
+            {@html sanitize(snarkdown(m.message || ""))}
           </div>
         </div>
       {/each}
