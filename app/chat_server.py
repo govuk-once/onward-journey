@@ -1,14 +1,15 @@
 import os
+import json
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from agents import OnwardJourneyAgent, default_handoff
-from data   import vectorStore
+from agents import OnwardJourneyAgent
+from handoff_examples import example_handoff_pension_schemes_nohelp
+from data import vectorStore
 
 app = FastAPI()
 
-# Enable CORS for the Svelte dev server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -21,28 +22,59 @@ app.add_middleware(
 KB_PATH = os.getenv("KB_PATH", "./your_kb_file.csv")
 vs = vectorStore(file_path=KB_PATH)
 
-# Initialize Agent with Strategy 4 (Internal KB + Live Chat)
+# Initialize Agent
 agent = OnwardJourneyAgent(
-    handoff_package=default_handoff(),
+    handoff_package=example_handoff_pension_schemes_nohelp(),
     vector_store_embeddings=vs.get_embeddings(),
     vector_store_chunks=vs.get_chunks(),
     strategy=4 
 )
 
+# Overriding system instruction for better visual structure
+agent.system_instruction += (
+    "\n\nCRITICAL: Use Markdown formatting. Use ### for headers, **bold** for phone numbers, "
+    "and bullet points for lists of contact details to ensure readability."
+)
+
 class ChatRequest(BaseModel):
     message: str
 
+class HandBackRequest(BaseModel):
+    transcript: list[dict]
+
+@app.get("/handoff/package")
+async def get_handoff_package():
+    return agent.handoff_package
+
+@app.post("/handoff/process")
+async def process_handoff_endpoint():
+    response_text = await agent.process_handoff()
+    return {"response": response_text or "Context processed."}
+
+@app.post("/handoff/back")
+async def hand_back_to_agent(request: HandBackRequest):
+    try:
+        for entry in request.transcript:
+            speaker = "Live Agent" if entry['role'] == 'assistant' else "User"
+            agent._add_to_history(role=entry['role'], text=f"[{speaker}]: {entry['text']}")
+        
+        # Explicitly asking for a structured summary in Markdown
+        summary_prompt = (
+            "I am back. Please provide a structured Markdown summary of the live chat "
+            "using bullet points, and ask if I can help with GOV.UK services."
+        )
+        ai_response = await agent._send_message_and_tools(summary_prompt)
+        return {"status": "success", "summary": ai_response}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to process handback")
+
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
-    try:
-        # The agent processes the message and potentially calls 'connect_to_live_chat
-        # If called, 'connect_to_live_chat' returns the JSON handoff string
-        response_text = await agent._send_message_and_tools(request.message)
-        
-        # Return the text containing the signal to the frontend
-        return {"response": response_text}
-        
-    except Exception as e:
-        print(f"Chat Logic Error: {e}")
-        # Return a 500 error if the Bedrock call or tool fails
-        raise HTTPException(status_code=500, detail=f"Agent Error: {str(e)}")
+    response_text = await agent._send_message_and_tools(request.message)
+    return {"response": response_text}
+
+@app.post("/chat/reset")
+async def reset_chat():
+    agent.history = []
+    agent.handoff_package = {'final_conversation_history': []}
+    return {"status": "success"}

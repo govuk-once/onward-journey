@@ -2,9 +2,7 @@ import json
 import numpy as np
 import boto3
 import os
-import os
 
-from typing                   import List, Dict, Any, Optional
 from typing                   import List, Dict, Any, Optional
 from sklearn.metrics.pairwise import cosine_similarity
 from opensearchpy             import OpenSearch
@@ -81,13 +79,30 @@ class OnwardJourneyAgent:
                     "and help with the user's request. **Your priority is aiding and clarifying until you have all the information needed to provide a final answer.** "
                     "This includes:"
                     "1. **Ambiguity Check:** If the user's request is ambiguous or requires a specific detail (e.g., 'Tax Credits'), your first turn **MUST BE A TEXT RESPONSE** asking a single, specific clarifying question. **DO NOT CALL THE TOOL YET.** "
+                    "This can include when there are MULTIPLE phone numbers so can you clarify until only one phone number remains following user clarification."
                     "2. **Tool Use:** If the request is clear, OR if the user has just provided the clarification, you must call the `query_internal_kb` and/or `query_govuk_kb` tools to find answers to the user query. "
                     "3. **Final Answer:** After the tool call(s) is/are complete, provide the final, grounded answer unless clarification is needed." \
                     "You have access to two knowledge bases which you can query using the tools provided. "
                     "Make sure your responses are formatted well for the user to read." \
                     "Always be looking to clarify if there is any ambiguity in the user's request."
                     "You can use both tools if the query requires a cross-referenced answer."
-                    "If a phone number is provided, you must call the `connect_to_live_chat` tool to transfer the user to a live agent."
+                    "If a phone number is provided for a MOJ-related query, you must call the `connect_to_live_chat_MOJ` tool" 
+                    "to transfer the user to a live agent IF they want a human agent. If a phone number is provided for an "
+                    "immigration-related query, you must call the `connect_to_live_chat_immigration` tool to transfer the user" 
+                    "to a live agent IF they want a human agent. All other live chats are currently not available."
+                    "If a phone number is provided for a HMRC pensions, forms and returns related query, you must call the `connect_to_live_chat_HMRC_pensions_forms_and_returns` tool" \
+                    "to transfer the user to a live agent IF they want a human agent."
+                    "CRITICAL FORMATTING RULES:\n"
+                    "1. Use **Markdown** for all responses.\n"
+                    "2. Use ### Headers for distinct sections.\n"
+                    "3. Use **bold** for emphasis, phone numbers, and key terms.\n"
+                    "4. Use bullet points or numbered lists for steps or multiple contact details.\n"
+                    "5. Use > blockquotes for important notes or warnings.\n\n"
+                    "Example structure:\n"
+                    "### Section Title\n"
+                    "* **Phone:** `0300...`\n"
+                    "* **Hours:** 9am - 5pm\n\n"
+                    "Always clarify ambiguity before calling tools."
                                   )
 
     def _add_to_history(self, role: str, text: str = '', tool_calls: list = [], tool_results: list = []):
@@ -124,7 +139,9 @@ class OnwardJourneyAgent:
             # Only use Internal KB and Live Chat
             self.available_tools = {
                 "query_internal_kb": self.query_internal_kb,
-                "connect_to_live_chat": self.connect_to_live_chat
+                "connect_to_live_chat_MOJ": self.connect_to_live_chat_MOJ,
+                "connect_to_live_chat_immigration": self.connect_to_live_chat_immigration,
+                "connect_to_live_chat_HMRC_pensions_forms_and_returns": self.connect_to_live_chat_HMRC_pensions_forms_and_returns
             }
         # Strategy 3 uses both tools, so no change needed
         else:
@@ -149,6 +166,7 @@ class OnwardJourneyAgent:
         )
         return json.loads(response.get('body').read()).get('embedding', [])
 
+    # orchestration of messaging and tool calling 
     async def _send_message_and_tools(self, prompt: str) -> str:
         self._add_to_history("user", prompt) #
 
@@ -187,7 +205,7 @@ class OnwardJourneyAgent:
                 else:
                     out = func(**args)
 
-                if call['name'] == "connect_to_live_chat":
+                if call['name'] == "connect_to_live_chat_MOJ" or call['name'] == "connect_to_live_chat_immigration" or call['name'] == "connect_to_live_chat_HMRC_pensions_forms_and_returns":
                     handoff_signal = out 
 
                 results.append({
@@ -211,30 +229,6 @@ class OnwardJourneyAgent:
                 final_text = next((c['text'] for c in final_resp_body.get('content', []) if c['type'] == 'text'), "Transferring...")
                 
                 return f"{final_text}\n\n{handoff_signal}"
-
-    async def connect_to_live_chat(self, reason: str):
-        """
-        Returns handoff configuration for the frontend. 
-        """
-
-        history = self.history 
-        summary = f"User is asking about: {reason}."
-
-        user_queries = [c['text'] for m in history for c in m['content'] if m['role'] == 'user' and c['type'] == 'text']
-        summary += "Summary of previous turns: " + " | ".join(user_queries[-3:])
-
-
-
-        handoff_config = {
-            "action": "initiate_live_handoff",
-            "deploymentId": os.getenv('GENESYS_DEPLOYMENT_ID'),
-            "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
-            "token": str(uuid.uuid4()),
-            "reason": reason,
-            "summary": summary
-        }
-        
-        return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
 
     def _tool_declarations(self):
         """
@@ -267,9 +261,9 @@ class OnwardJourneyAgent:
             },
         }
 
-        livechat_tool = {
-            "name": "connect_to_live_chat",
-            "description": "Call this tool if the user requires human assistance or if the query involves a phone number that requires a live transfer.",
+        livechat_tool_1 = {
+            "name": "connect_to_live_chat_MOJ",
+            "description": "Call this tool when the conversation surrounds MOJ  AND when the user requires human assistance or if the query involves a phone number that requires a live transfer, for MOJ enquiries.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -279,6 +273,29 @@ class OnwardJourneyAgent:
             },
         }
 
+        livechat_tool_2 = {
+            "name": "connect_to_live_chat_immigration",
+            "description": "Call this tool when the conversation surrounds immigration AND when the user requires human assistance or if the query involves a phone number that requires a live transfer.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "reason": {"type": "string", "description": "The reason for the handoff."}
+                },
+                "required": ["reason"],
+            },
+        }
+
+        livechat_tool_3 = {
+            "name": "connect_to_live_chat_HMRC_pensions_forms_and_returns",
+            "description": "Call this tool when the conversation surrounds HMRC pensions, forms and returns AND when the user requires human assistance or if the query involves a phone number that requires a live transfer.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "reason": {"type": "string", "description": "The reason for the handoff."}
+                },
+                "required": ["reason"],
+            },
+        }
 
         # 3. Filter based on Strategy
         if self.strategy == 1:
@@ -287,7 +304,7 @@ class OnwardJourneyAgent:
             self.bedrock_tools = [govuk_tool]
 
         elif self.strategy == 4:
-            self.bedrock_tools = [oj_tool, livechat_tool]
+            self.bedrock_tools = [oj_tool, livechat_tool_1, livechat_tool_2, livechat_tool_3]
 
         else:
             # Strategy 3 or default: provide both tools
@@ -296,6 +313,76 @@ class OnwardJourneyAgent:
         if self.verbose:
             active_tool_names = [t['name'] for t in self.bedrock_tools]
             print(f"DEBUG: Strategy {self.strategy} active. Tools available: {active_tool_names}")
+
+    # tools for LLM 
+    async def connect_to_live_chat_MOJ(self, reason: str):
+        """
+        Returns handoff configuration for the frontend. 
+        """
+        history = self.history 
+        summary = f"User is asking about: {reason}."
+
+        user_queries = [c['text'] for m in history for c in m['content'] if m['role'] == 'user' and c['type'] == 'text']
+        summary += "Summary of previous turns: " + " | ".join(user_queries[-3:])
+
+        handoff_config = {
+            "action": "initiate_live_handoff",
+            "deploymentId": os.getenv('GENESYS_DEPLOYMENT_ID_MOJ'),
+            "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
+            "token": str(uuid.uuid4()),
+            "reason": reason,
+            "summary": summary
+        }
+        
+        return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
+
+    async def connect_to_live_chat_immigration(self, reason: str):
+        """
+        Returns handoff configuration for the frontend. 
+        """
+
+        history = self.history 
+        summary = f"User is asking about: {reason}."
+
+        user_queries = [c['text'] for m in history for c in m['content'] if m['role'] == 'user' and c['type'] == 'text']
+        summary += "Summary of previous turns: " + " | ".join(user_queries[-3:])
+
+
+
+        handoff_config = {
+            "action": "initiate_live_handoff",
+            "deploymentId": os.getenv('GENESYS_DEPLOYMENT_ID_IMMIGRATION'),
+            "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
+            "token": str(uuid.uuid4()),
+            "reason": reason,
+            "summary": summary
+        }
+        
+        return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
+
+    async def connect_to_live_chat_HMRC_pensions_forms_and_returns(self, reason: str):
+        """
+        Returns handoff configuration for the frontend. 
+        """
+
+        history = self.history 
+        summary = f"User is asking about: {reason}."
+
+        user_queries = [c['text'] for m in history for c in m['content'] if m['role'] == 'user' and c['type'] == 'text']
+        summary += "Summary of previous turns: " + " | ".join(user_queries[-3:])
+
+
+
+        handoff_config = {
+            "action": "initiate_live_handoff",
+            "deploymentId": os.getenv('GENESYS_DEPLOYMENT_ID_PENSIONS_FORMS_AND_RETURNS'),
+            "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
+            "token": str(uuid.uuid4()),
+            "reason": reason,
+            "summary": summary
+        }
+        
+        return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
 
     def query_internal_kb(self, query: str) -> str:
         """Local RAG search."""
@@ -351,7 +438,8 @@ class OnwardJourneyAgent:
             f"Previous conversation history: {history_str}. "
             f"INSTRUCTION: Based on the history above, provide the next response to the user. "
             f"{selected_constraint}\n"
-        "If the history is insufficient to provide a grounded answer, ask a clarifying question."
+        "Please analyze the history and fulfill the user's request, using your specialized tools if necessary."
+        "If more than one phone number is available semantically, ask a clarifying question."
         )
         return await self._send_message_and_tools(initial_prompt)
 

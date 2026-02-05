@@ -36,6 +36,13 @@
 		"npm": "^11.6.2"
 	},
 	"dependencies": {
-		"govuk-frontend": "^5.14.0"
-	}
+		"govuk-frontend": "^5.14.0",
+		"svelte-markdown": "^0.4.1"
+	},
+	"overrides": {
+    "svelte-markdown": {
+      "svelte": "$svelte"
+    }
+
+}
 }
