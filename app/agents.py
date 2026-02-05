@@ -2,9 +2,7 @@ import json
 import numpy as np
 import boto3
 import os
-import os
 
-from typing                   import List, Dict, Any, Optional
 from typing                   import List, Dict, Any, Optional
 from sklearn.metrics.pairwise import cosine_similarity
 from opensearchpy             import OpenSearch
