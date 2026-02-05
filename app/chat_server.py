@@ -22,12 +22,18 @@ app.add_middleware(
 KB_PATH = os.getenv("KB_PATH", "./your_kb_file.csv")
 vs = vectorStore(file_path=KB_PATH)
 
-# Initialize Agent with Strategy 4
+# Initialize Agent
 agent = OnwardJourneyAgent(
     handoff_package=example_handoff_pension_schemes_nohelp(),
     vector_store_embeddings=vs.get_embeddings(),
     vector_store_chunks=vs.get_chunks(),
     strategy=4 
+)
+
+# Overriding system instruction for better visual structure
+agent.system_instruction += (
+    "\n\nCRITICAL: Use Markdown formatting. Use ### for headers, **bold** for phone numbers, "
+    "and bullet points for lists of contact details to ensure readability."
 )
 
 class ChatRequest(BaseModel):
@@ -38,46 +44,37 @@ class HandBackRequest(BaseModel):
 
 @app.get("/handoff/package")
 async def get_handoff_package():
-    try:
-        return agent.handoff_package
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return agent.handoff_package
 
 @app.post("/handoff/process")
 async def process_handoff_endpoint():
-    try:
-        response_text = await agent.process_handoff()
-        return {"response": response_text or "Context processed."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    response_text = await agent.process_handoff()
+    return {"response": response_text or "Context processed."}
 
 @app.post("/handoff/back")
 async def hand_back_to_agent(request: HandBackRequest):
     try:
-        # 1. Sync the transcript into the agent's memory
         for entry in request.transcript:
             speaker = "Live Agent" if entry['role'] == 'assistant' else "User"
             agent._add_to_history(role=entry['role'], text=f"[{speaker}]: {entry['text']}")
         
-        # 2. Make an LLM call to summarize or check for remaining needs
+        # Explicitly asking for a structured summary in Markdown
         summary_prompt = (
-            "I have just returned from a live chat session. "
-            "Based on the transcript above, provide a very brief summary of what was resolved "
-            "and ask the user if there is anything else related to GOV.UK services I can help with."
+            "I am back. Please provide a structured Markdown summary of the live chat "
+            "using bullet points, and ask if I can help with GOV.UK services."
         )
-        ai_response = await agent._send_message_and_tools(summary_prompt) 
-        
-        return {
-            "status": "History updated",
-            "summary": ai_response
-        }
+        ai_response = await agent._send_message_and_tools(summary_prompt)
+        return {"status": "success", "summary": ai_response}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to process handback")
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
-    try:
-        response_text = await agent._send_message_and_tools(request.message)
-        return {"response": response_text}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    response_text = await agent._send_message_and_tools(request.message)
+    return {"response": response_text}
+
+@app.post("/chat/reset")
+async def reset_chat():
+    agent.history = []
+    agent.handoff_package = {'final_conversation_history': []}
+    return {"status": "success"}
