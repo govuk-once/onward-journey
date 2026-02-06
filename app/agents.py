@@ -7,6 +7,7 @@ from typing                   import List, Dict, Any, Optional
 from sklearn.metrics.pairwise import cosine_similarity
 from opensearchpy             import OpenSearch
 from dotenv                   import load_dotenv
+from copy import deepcopy
 
 from helpers                  import SearchResult
 
@@ -162,7 +163,6 @@ class OnwardJourneyAgent:
                 args = call['input']
                 
                 if func.__module__ == 'tools':
-                    from copy import deepcopy
                     args['history'] = deepcopy(self.history)
 
                 out = await func(**args) if asyncio.iscoroutinefunction(func) else func(**args)
