@@ -10,10 +10,12 @@ from dotenv                   import load_dotenv
 
 from helpers                  import SearchResult
 
-load_dotenv()
 
 import asyncio
 import uuid
+import tools 
+
+load_dotenv()
 
 def default_handoff():
     return {'handoff_agent_id': 'GOV.UK Chat', 'final_conversation_history': []}
@@ -54,21 +56,10 @@ class OnwardJourneyAgent:
         self.os_index = 'govuk_chat_chunked_content'
 
         # State & History
-        # State & History
         self.handoff_package = handoff_package
         self.history: List[Dict[str, Any]] = []
 
         self.strategy = strategy
-
-        self._filter_tools_by_strategy()
-
-        self._tool_declarations()
-
-        self.history: List[Dict[str, Any]] = []
-
-        self.strategy = strategy
-
-        self._filter_tools_by_strategy()
 
         self._tool_declarations()
 
@@ -121,34 +112,6 @@ class OnwardJourneyAgent:
 
         self.history.append(message)
 
-    def _filter_tools_by_strategy(self):
-        """Adjust available tools based on the selected strategy."""
-        if self.strategy == 1:
-            # Only use Internal KB
-            self.available_tools = {
-                "query_internal_kb": self.query_internal_kb
-            }
-        elif self.strategy == 2:
-            # Only use GOV.UK KB
-            self.available_tools = {
-                "query_govuk_kb": self.query_govuk_kb
-            }
-        elif self.strategy == 4:
-            # Only use Internal KB and Live Chat
-            self.available_tools = {
-                "query_internal_kb": self.query_internal_kb,
-                "connect_to_live_chat_MOJ": self.connect_to_live_chat_MOJ,
-                "connect_to_live_chat_immigration": self.connect_to_live_chat_immigration,
-                "connect_to_live_chat_HMRC_pensions_forms_and_returns": self.connect_to_live_chat_HMRC_pensions_forms_and_returns
-            }
-        # Strategy 3 uses both tools, so no change needed
-        else:
-            self.available_tools = {
-            "query_internal_kb": self.query_internal_kb,
-            "query_govuk_kb": self.query_govuk_kb
-        }
-        return
-
     def _get_embedding(self, text: str) -> List[float]:
         """Standardized embedding for all KBs."""
         body = json.dumps({
@@ -198,12 +161,13 @@ class OnwardJourneyAgent:
                 func = self.available_tools[call['name']]
                 args = call['input']
                 
-                if asyncio.iscoroutinefunction(func):
-                    out = await func(**args)
-                else:
-                    out = func(**args)
+                if func.__module__ == 'tools':
+                    from copy import deepcopy
+                    args['history'] = deepcopy(self.history)
 
-                if call['name'] == "connect_to_live_chat_MOJ" or call['name'] == "connect_to_live_chat_immigration" or call['name'] == "connect_to_live_chat_HMRC_pensions_forms_and_returns":
+                out = await func(**args) if asyncio.iscoroutinefunction(func) else func(**args)
+
+                if "SIGNAL: initiate_live_handoff" in str(out):
                     handoff_signal = out 
 
                 results.append({
@@ -229,184 +193,37 @@ class OnwardJourneyAgent:
                 return f"{final_text}\n\n{handoff_signal}"
 
     def _tool_declarations(self):
-        """
-        Dynamically sets self.bedrock_tools based on the active strategy.
-        1: OJ KB only, 2: GOVUK KB only, 3: Both.
-        """
-        # 1. Define the Onward Journey Tool
-        oj_tool = {
-            "name": "query_internal_kb",
-            "description": "Search specialized internal Onward Journey data for journey-specific status and private guidance.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "The natural language request for internal data."}
-                },
-                "required": ["query"],
-            },
+        """Maps Bedrock tool names to Python functions based on strategy."""
+
+        # Internal RAG logic stays in Agent to access local embeddings
+        self.available_tools = {
+            "query_internal_kb": self.query_internal_kb,
+            "query_govuk_kb": self.query_govuk_kb
         }
 
-        # 2. Define the GOV.UK Tool
-        govuk_tool = {
-            "name": "query_govuk_kb",
-            "description": "Search public GOV.UK policy, legislation, and public-facing government services.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "The natural language request for public policy."}
-                },
-                "required": ["query"],
-            },
+        # External logic mapped from tools.py
+        external_mapping = {
+            "connect_to_live_chat_MOJ": tools.connect_to_moj,
+            "connect_to_live_chat_immigration": tools.connect_to_immigration,
+            "connect_to_live_chat_HMRC_pensions_forms_and_returns": tools.connect_to_hmrc
         }
 
-        livechat_tool_1 = {
-            "name": "connect_to_live_chat_MOJ",
-            "description": "Call this tool when the conversation surrounds MOJ  AND when the user requires human assistance or if the query involves a phone number that requires a live transfer, for MOJ enquiries.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "reason": {"type": "string", "description": "The reason for the handoff."}
-                },
-                "required": ["reason"],
-            },
-        }
-
-        livechat_tool_2 = {
-            "name": "connect_to_live_chat_immigration",
-            "description": "Call this tool when the conversation surrounds immigration AND when the user requires human assistance or if the query involves a phone number that requires a live transfer.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "reason": {"type": "string", "description": "The reason for the handoff."}
-                },
-                "required": ["reason"],
-            },
-        }
-
-        livechat_tool_3 = {
-            "name": "connect_to_live_chat_HMRC_pensions_forms_and_returns",
-            "description": "Call this tool when the conversation surrounds HMRC pensions, forms and returns AND when the user requires human assistance or if the query involves a phone number that requires a live transfer.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "reason": {"type": "string", "description": "The reason for the handoff."}
-                },
-                "required": ["reason"],
-            },
-        }
-
-        # 3. Filter based on Strategy
-        if self.strategy == 1:
-            self.bedrock_tools = [oj_tool]
+        if self.strategy == 4:
+            self.available_tools = self.available_tools | external_mapping
+            self.available_tools.pop("query_govuk_kb", None)
+        elif self.strategy == 1:
+            self.available_tools = {"query_internal_kb": self.query_internal_kb}
         elif self.strategy == 2:
-            self.bedrock_tools = [govuk_tool]
+            self.available_tools = {"query_govuk_kb": self.query_govuk_kb}
 
-        elif self.strategy == 4:
-            self.bedrock_tools = [oj_tool, livechat_tool_1, livechat_tool_2, livechat_tool_3]
+        self.bedrock_tools = tools.get_tool_definitions(self.strategy)
 
-        else:
-            # Strategy 3 or default: provide both tools
-            self.bedrock_tools = [oj_tool, govuk_tool]
+
+
 
         if self.verbose:
             active_tool_names = [t['name'] for t in self.bedrock_tools]
             print(f"DEBUG: Strategy {self.strategy} active. Tools available: {active_tool_names}")
-
-    # tools for LLM 
-    async def connect_to_live_chat_MOJ(self, reason: str):
-        """
-        Returns handoff configuration for the frontend. 
-        """
-        history = self.history 
-        summary = f"User is asking about: {reason}."
-
-        user_queries = [c['text'] for m in history for c in m['content'] if m['role'] == 'user' and c['type'] == 'text']
-        summary += "Summary of previous turns: " + " | ".join(user_queries[-3:])
-
-        handoff_config = {
-            "action": "initiate_live_handoff",
-            "deploymentId": os.getenv('GENESYS_DEPLOYMENT_ID_MOJ'),
-            "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
-            "token": str(uuid.uuid4()),
-            "reason": reason,
-            "summary": summary
-        }
-        
-        return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
-
-    async def connect_to_live_chat_immigration(self, reason: str):
-        """
-        Returns handoff configuration for the frontend. 
-        """
-
-        history = self.history 
-        summary = f"User is asking about: {reason}."
-
-        user_queries = [c['text'] for m in history for c in m['content'] if m['role'] == 'user' and c['type'] == 'text']
-        summary += "Summary of previous turns: " + " | ".join(user_queries[-3:])
-
-
-
-        handoff_config = {
-            "action": "initiate_live_handoff",
-            "deploymentId": os.getenv('GENESYS_DEPLOYMENT_ID_IMMIGRATION'),
-            "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
-            "token": str(uuid.uuid4()),
-            "reason": reason,
-            "summary": summary
-        }
-        
-        return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
-
-    async def connect_to_live_chat_HMRC_pensions_forms_and_returns(self, reason: str):
-        """
-        Returns handoff configuration for the frontend. 
-        """
-
-        history = self.history 
-        summary = f"User is asking about: {reason}."
-
-        user_queries = [c['text'] for m in history for c in m['content'] if m['role'] == 'user' and c['type'] == 'text']
-        summary += "Summary of previous turns: " + " | ".join(user_queries[-3:])
-
-
-
-        handoff_config = {
-            "action": "initiate_live_handoff",
-            "deploymentId": os.getenv('GENESYS_DEPLOYMENT_ID_PENSIONS_FORMS_AND_RETURNS'),
-            "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
-            "token": str(uuid.uuid4()),
-            "reason": reason,
-            "summary": summary
-        }
-        
-        return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
-
-    def query_internal_kb(self, query: str) -> str:
-        """Local RAG search."""
-        query_vec = np.array(self._get_embedding(query)).reshape(1, -1)
-        sims = cosine_similarity(query_vec, self.embeddings)[0]
-        top_idx = sims.argsort()[-self.top_K_OJ:][::-1]
-        return "Internal Context:\n" + "\n".join([self.chunk_data[i] for i in top_idx])
-    def query_govuk_kb(self, query: str) -> str:
-        """OpenSearch RAG search."""
-        search_body = {
-            "size": self.top_K_govuk,
-            "query": {"knn": {"titan_embedding": {"vector": self._get_embedding(query), "k": self.top_K_govuk}}}
-        }
-        resp = self.os_client.search(index=self.os_index, body=search_body)
-
-        results = []
-        for hit in resp["hits"]["hits"]:
-            result = hit["_source"]
-            result["url"] = f"https://www.gov.uk{result['exact_path']}"
-            result["score"] = hit["_score"]
-            results.append(SearchResult(**result))
-
-        return 'Retrieved GOV.UK Context:\n' + "\n".join(
-            [f"Title: {res.title}\nURL: {res.url}\nDescription: {res.description or 'N/A'}\nScore: {res.score}\n"
-             for res in results]
-        ) if results else "No GOV.UK info found."
 
     async def process_handoff(self)-> Optional[str]:
         """
@@ -441,6 +258,69 @@ class OnwardJourneyAgent:
         )
         return await self._send_message_and_tools(initial_prompt)
 
+    async def _initiate_handoff(self, reason: str, deployment_id_env: str):
+            """Generic handoff logic to reduce duplication."""
+            user_queries = [
+                c['text'] for m in self.history 
+                for c in m['content'] 
+                if m['role'] == 'user' and c['type'] == 'text'
+            ]
+            summary = f"User asking about: {reason}. History: {' | '.join(user_queries[-3:])}"
+
+            handoff_config = {
+                "action": "initiate_live_handoff",
+                "deploymentId": os.getenv(deployment_id_env),
+                "region": os.getenv('GENESYS_REGION', 'euw2.pure.cloud'),
+                "token": str(uuid.uuid4()),
+                "reason": reason,
+                "summary": summary
+            }
+            return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
+
+    async def connect_to_live_chat_MOJ(self, reason: str):
+        """
+        Returns handoff configuration for the frontend. 
+        """
+        return await self._initiate_handoff(reason, 'GENESYS_DEPLOYMENT_ID_MOJ')
+
+    async def connect_to_live_chat_immigration(self, reason: str):
+        """
+        Returns handoff configuration for the frontend. 
+        """
+        return await self._initiate_handoff(reason, 'GENESYS_DEPLOYMENT_ID_IMMIGRATION')
+
+    async def connect_to_live_chat_HMRC_pensions_forms_and_returns(self, reason: str):
+        """
+        Returns handoff configuration for the frontend. 
+        """
+        return await self._initiate_handoff(reason, 'GENESYS_DEPLOYMENT_ID_PENSIONS_FORMS_AND_RETURNS') 
+
+    def query_internal_kb(self, query: str) -> str:
+        """Local RAG search."""
+        query_vec = np.array(self._get_embedding(query)).reshape(1, -1)
+        sims = cosine_similarity(query_vec, self.embeddings)[0]
+        top_idx = sims.argsort()[-self.top_K_OJ:][::-1]
+        return "Internal Context:\n" + "\n".join([self.chunk_data[i] for i in top_idx])
+    def query_govuk_kb(self, query: str) -> str:
+        """OpenSearch RAG search."""
+        search_body = {
+            "size": self.top_K_govuk,
+            "query": {"knn": {"titan_embedding": {"vector": self._get_embedding(query), "k": self.top_K_govuk}}}
+        }
+        resp = self.os_client.search(index=self.os_index, body=search_body)
+
+        results = []
+        for hit in resp["hits"]["hits"]:
+            result = hit["_source"]
+            result["url"] = f"https://www.gov.uk{result['exact_path']}"
+            result["score"] = hit["_score"]
+            results.append(SearchResult(**result))
+
+        return 'Retrieved GOV.UK Context:\n' + "\n".join(
+            [f"Title: {res.title}\nURL: {res.url}\nDescription: {res.description or 'N/A'}\nScore: {res.score}\n"
+             for res in results]
+        ) if results else "No GOV.UK info found."
+    
     def run_conversation(self) -> None:
             """
             Interactive terminal loop that mirrors the original functionality
