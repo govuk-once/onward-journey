@@ -219,9 +219,8 @@ infrastructure/local.auto.tfvars
 .zshrc
 
 # Lambda build artifacts
-dist_package/
-rds_seeder_payload.zip
-orchestrator_payload.zip
+dist/
+*.zip
 
 # Lambda invocation responses
 response_*.json
