@@ -51,3 +51,20 @@ resource "aws_subnet" "public" {
     Tier = "dmz-public" # Reserved for NAT Gateway and public-facing ingress components.
   }
 }
+
+# The Interface Endpoint
+# This allows the private Lambda to reach the Agent Runtime API without a NAT Gateway.
+# resource "aws_vpc_endpoint" "bedrock_agent_runtime" {
+#   vpc_id              = data.aws_vpc.active.id
+#   service_name        = "com.amazonaws.eu-west-2.bedrock-agent-runtime"
+#   vpc_endpoint_type   = "Interface"
+#   subnet_ids          = local.private_subnet_ids
+#   security_group_ids  = [aws_security_group.vpc_endpoints.id]
+
+#   # CRITICAL: Set to false so multiple workspaces can exist in one VPC
+#   private_dns_enabled = false
+
+#   tags = {
+#     Name = "${var.environment}-bedrock-agent-runtime-vpce"
+#   }
+# }

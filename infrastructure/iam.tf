@@ -1,5 +1,6 @@
 ## ORCHESTRATOR INFERENCE ROLE
 # Primary execution role for the Onward Journey Orchestration Layer.
+
 resource "aws_iam_role" "inference" {
   name               = "${var.environment}-inference-role"
   assume_role_policy = data.aws_iam_policy_document.allow_all_assume_role.json
@@ -7,12 +8,19 @@ resource "aws_iam_role" "inference" {
 
 data "aws_iam_policy_document" "allow_all_assume_role" {
   statement {
-    sid = "AllowAllIAMUsersToAssumeRole"
+    sid = "AllowLambdaAndUsersToAssumeRole"
 
     actions = [
       "sts:AssumeRole"
     ]
 
+    # This allows the Lambda Service to assume the role
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+
+    # This allows local devs to assume the role for testing
     principals {
       type = "AWS"
       identifiers = [
@@ -49,20 +57,28 @@ resource "aws_iam_policy" "agentcore_access" {
         Sid    = "MemoryAndGatewayOps"
         Effect = "Allow"
         Action = [
-          # Session management actions
-          "bedrock:CreateSession",
-          "bedrock:UpdateSession",
-          "bedrock:GetSession",
-          "bedrock:DeleteSession", # Useful for clean-up logic
+          # --- AGENTCORE MEMORY: SESSION & CONTEXT ---
+          # Essential for LangGraph to save and retrieve conversation turns.
+          "bedrock-agentcore:CreateSession",
+          "bedrock-agentcore:GetSession",
+          "bedrock-agentcore:CreateEvent",      # Action to save a turn to short-term memory
+          "bedrock-agentcore:GetMemory",        # Action to retrieve tactical/strategic memory records
+          "bedrock-agentcore:ListEvents",       # Required to list the checkpoint history
+          "bedrock-agentcore:RetrieveMemories", # Required for more advanced context retrieval
 
-          # AgentCore specific actions for Memory/Gateway
+          # --- AGENTCORE RUNTIME ---
           "bedrock:InvokeAgent",
-          "bedrock:GetAgentMemory", # Specifically required to pull context back
-          "bedrock:UpdateAgentMemory"
+          "bedrock-agentcore:InvokeAgentRuntime",
+          "bedrock-agentcore:InvokeGateway", # Required for MCP POST calls
         ]
         Resource = [
           aws_bedrockagentcore_memory.agent_chat_context.arn,
-          aws_bedrockagentcore_gateway.tool_interface.gateway_arn
+          # 1. The Gateway itself (for management)
+          aws_bedrockagentcore_gateway.tool_interface.gateway_arn,
+          # 2. The Gateway sub-resources (for /runtime-endpoint/DEFAULT)
+          "${aws_bedrockagentcore_gateway.tool_interface.gateway_arn}/*",
+          # Identity boundary for agent execution
+          "arn:aws:bedrock:${var.aws_region}:${var.aws_account_id}:agent-alias/*"
         ]
       }
     ]
@@ -72,6 +88,39 @@ resource "aws_iam_policy" "agentcore_access" {
 resource "aws_iam_role_policy_attachment" "inference_agentcore" {
   role       = aws_iam_role.inference.name
   policy_arn = aws_iam_policy.agentcore_access.arn
+}
+
+## ORCHESTRATOR RDS & SECRETS ACCESS
+# Allows the Orchestrator to fetch the DB password and connect to the RDS instance.
+
+resource "aws_iam_policy" "orchestrator_rds_secrets" {
+  name        = "${var.environment}-orchestrator-rds-secrets"
+  description = "Allows the Orchestrator to access RDS credentials and Bedrock streaming."
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "BedrockStreamingAccess"
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream"
+        ]
+        Resource = [
+          # Permission for the base models
+          "arn:aws:bedrock:${var.aws_region}::foundation-model/anthropic.claude-*",
+          # Permission for the Inference Profiles
+          "arn:aws:bedrock:${var.aws_region}:${var.aws_account_id}:inference-profile/eu.anthropic.claude-*",
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "inference_rds_secrets" {
+  role       = aws_iam_role.inference.name
+  policy_arn = aws_iam_policy.orchestrator_rds_secrets.arn
 }
 
 ## DATASET ACCESS
@@ -105,7 +154,7 @@ resource "aws_iam_role_policy_attachment" "inference_allow_dataset_read" {
 }
 
 
-# BEDROCK AGENTCORE SERVICE ROLE
+## BEDROCK AGENTCORE SERVICE ROLE
 # Required for managed session memory and tool gateway connectivity.
 
 resource "aws_iam_role" "agentcore_role" {
@@ -130,8 +179,61 @@ resource "aws_iam_role" "agentcore_role" {
   }
 }
 
+# Authorizes the Gateway to trigger the RDS Tool Lambda
+resource "aws_iam_role_policy" "agentcore_gateway_invocation" {
+  name = "${var.environment}-agentcore-gateway-invocation"
+  role = aws_iam_role.agentcore_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AllowGatewayToInvokeTools"
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = [aws_lambda_function.rds_tool.arn]
+      }
+    ]
+  })
+}
+
+
+## BEDROCK AGENTCORE RESOURCE-BASED POLICY
+# Explicitly authorises the Bedrock service to invoke the RDS Tool Lambda.
+# This acts as the "Resource-Based Policy" on the Lambda side.
+
+resource "aws_lambda_permission" "allow_bedrock_gateway" {
+  statement_id  = "AllowBedrockGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.rds_tool.function_name
+  principal     = "bedrock-agentcore.amazonaws.com"
+  source_arn    = aws_bedrockagentcore_gateway.tool_interface.gateway_arn
+}
+
+## RDS TOOL SERVICE ROLE
+# Execution role for the MCP Tool Lambda that handles database searches.
+resource "aws_iam_role" "rds_tool_role" {
+  name               = "${var.environment}-rds-tool-role"
+  assume_role_policy = data.aws_iam_policy_document.allow_all_assume_role.json
+}
+
+# Attachment: Reuse VPC access for private RDS connectivity
+resource "aws_iam_role_policy_attachment" "rds_tool_vpc_access" {
+  role       = aws_iam_role.rds_tool_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+# Attachment: Reuse existing RDS/Secrets/Embeddings policy
+resource "aws_iam_role_policy_attachment" "rds_tool_main" {
+  role       = aws_iam_role.rds_tool_role.name
+  policy_arn = aws_iam_policy.rds_seeder_permissions.arn
+}
+
+
+
 ## RDS SEEDER SERVICE ROLE
 # Execution role for the Lambda responsible for database initialisation and data loading.
+
 resource "aws_iam_role" "rds_seeder_role" {
   name = "${var.environment}-rds-seeder-role"
 
@@ -149,6 +251,7 @@ resource "aws_iam_role" "rds_seeder_role" {
 
 ## RDS SEEDER DATA INGESTION POLICY
 # Specific permissions for S3 data retrieval, Bedrock model invocation, and secret decryption.
+
 resource "aws_iam_policy" "rds_seeder_permissions" {
   name        = "${var.environment}-rds-seeder-permissions"
   description = "Provides the RDS Seeder access to source datasets, embedding models, and credentials."

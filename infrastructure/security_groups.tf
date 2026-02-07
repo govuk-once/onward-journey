@@ -52,8 +52,8 @@ resource "aws_security_group_rule" "allow_orchestrator_to_endpoints" {
 # RDS METADATA STORE SECURITY GROUP
 # Firewall for the RDS instance hosting department contact metadata.
 resource "aws_security_group" "rds_metadata" {
-  name        = "${var.environment}-rds-metadata-sg"
-  description = "Allows the Orchestrator to query the Department Contacts database"
+  name        = "${var.environment}-rds-metadata-sg-v2"
+  description = "Allows authorized data services to query the Department Contacts database"
   vpc_id      = data.aws_vpc.active.id
 
   egress {
@@ -65,26 +65,26 @@ resource "aws_security_group" "rds_metadata" {
   }
 
   tags = {
-    Name = "${var.environment}-rds-metadata-sg"
+    Name = "${var.environment}-rds-metadata-sg-v2"
   }
 }
 
-# Ingress rule allowing PostgreSQL traffic from the Orchestrator to RDS.
-resource "aws_security_group_rule" "allow_orchestrator_to_rds" {
-  description              = "PostgreSQL from Orchestrator"
+# Allow Tooling & Seeder to reach RDS
+resource "aws_security_group_rule" "allow_data_services_to_rds" {
+  description              = "PostgreSQL from Seeder and RDS Tool"
   type                     = "ingress"
   from_port                = 5432
   to_port                  = 5432
   protocol                 = "tcp"
   security_group_id        = aws_security_group.rds_metadata.id
-  source_security_group_id = aws_security_group.orchestrator.id
+  source_security_group_id = aws_security_group.rds_seeder_sg.id
 }
 
 # RDS SEEDER SECURITY GROUP
-# Isolated group for the Lambda function responsible for initial database seeding.
+# Group for the Seeder and RDS Tool Lambda (MCP Server).
 resource "aws_security_group" "rds_seeder_sg" {
   name        = "${var.environment}-rds-seeder-sg"
-  description = "Allows the Seeder Lambda to reach RDS and AWS Services"
+  description = "Allows Data Services to reach RDS and AWS Services"
   vpc_id      = data.aws_vpc.active.id
 
   egress {
@@ -100,20 +100,9 @@ resource "aws_security_group" "rds_seeder_sg" {
   }
 }
 
-# Ingress rule allowing the RDS Seeder to perform database operations.
-resource "aws_security_group_rule" "allow_seeder_to_rds" {
-  description              = "Allow seeding traffic from the RDS Seeder"
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.rds_metadata.id
-  source_security_group_id = aws_security_group.rds_seeder_sg.id
-}
-
-# Ingress rule allowing the RDS Seeder to reach AWS service endpoints.
-resource "aws_security_group_rule" "allow_seeder_to_endpoints" {
-  description              = "Allow seeder to reach Bedrock/SecretsManager endpoints"
+# Ingress rule allowing authorized data services to reach AWS service endpoints.
+resource "aws_security_group_rule" "allow_data_services_to_endpoints" {
+  description              = "Allow data services to reach Bedrock/SecretsManager endpoints"
   type                     = "ingress"
   from_port                = 443
   to_port                  = 443

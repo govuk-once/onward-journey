@@ -46,4 +46,5 @@ locals {
   # Use the main route table ID. This ensures the S3 Gateway is attached
   # to the routing path used by our subnets (implicit association).
   private_route_table_ids = [data.aws_vpc.selected.main_route_table_id]
+  private_subnet_ids      = data.aws_subnets.private.ids
 }

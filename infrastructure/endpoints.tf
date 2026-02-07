@@ -42,3 +42,31 @@ resource "aws_vpc_endpoint" "s3" {
 
   tags = { Name = "${var.environment}-s3-endpoint" }
 }
+
+# 4. Bedrock AgentCore Endpoint - REQUIRED for Memory/Checkpointer & Gateway
+resource "aws_vpc_endpoint" "bedrock_agentcore" {
+  vpc_id             = data.aws_vpc.active.id
+  service_name       = "com.amazonaws.${var.aws_region}.bedrock-agentcore"
+  vpc_endpoint_type  = "Interface"
+  subnet_ids         = local.private_subnet_ids
+  security_group_ids = [aws_security_group.vpc_endpoints.id]
+  # Workspace safety: Set to false to allow multiple devs in one VPC.
+  # We pass the specific DNS name to the Lambda via environment variables.
+  private_dns_enabled = false
+
+  tags = { Name = "${var.environment}-bedrock-agentcore-endpoint" }
+}
+
+# Dedicated endpoint for Gateway MCP traffic
+resource "aws_vpc_endpoint" "bedrock_gateway" {
+  vpc_id             = data.aws_vpc.active.id
+  service_name       = "com.amazonaws.${var.aws_region}.bedrock-agentcore.gateway"
+  vpc_endpoint_type  = "Interface"
+  subnet_ids         = local.private_subnet_ids
+  security_group_ids = [aws_security_group.vpc_endpoints.id]
+
+  # KEEP this as false for multi-dev use
+  private_dns_enabled = false
+
+  tags = { Name = "${var.environment}-bedrock-gateway-endpoint" }
+}
