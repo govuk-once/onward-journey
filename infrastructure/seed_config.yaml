@@ -8,6 +8,7 @@ tables:
       department: "TEXT"
       tags: "TEXT"
       description: "TEXT"
+      phone_number: "TEXT"
       embedding: "VECTOR(1024)"
     embedding_source_cols: # Define which columns should be combined to create the embedding
       [
@@ -27,3 +28,25 @@ tables:
       verified_response: "TEXT"
       handling_strategy: "TEXT"
       # No embedding column here means this table stays as plain text
+
+  - name: "dept_contacts_v2"
+    source_file: "mock_rag_data_v2.csv"
+    primary_key: "id"
+    columns:
+      uid: "TEXT"
+      service_name: "TEXT"
+      department: "TEXT"
+      tags: "TEXT"
+      description: "TEXT"
+      phone_number: "TEXT"
+      genesys_queue_id: "TEXT"
+      embedding: "VECTOR(1024)"
+    embedding_source_cols:
+      [
+        "department",
+        "service_name",
+        "topic",
+        "tags",
+        "description",
+        "user_type",
+      ]

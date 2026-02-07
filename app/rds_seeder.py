@@ -12,6 +12,29 @@ import boto3
 import pg8000.native
 
 
+def get_db_password():
+    """Retrieves the DB password from Secrets Manager using the ARN."""
+    client = boto3.client("secretsmanager")
+    response = client.get_secret_value(SecretId=os.environ["DB_SECRET_ARN"])
+    return response["SecretString"]
+
+
+def get_embedding(bedrock_client, text):
+    """
+    Invokes the Amazon Titan Text Embeddings v2 model via Bedrock.
+    Returns a 1024-dimension numerical vector for the provided text.
+    """
+    body = json.dumps({"inputText": text, "dimensions": 1024})
+
+    response = bedrock_client.invoke_model(
+        body=body,
+        modelId="amazon.titan-embed-text-v2:0",
+        contentType="application/json",
+    )
+
+    return json.loads(response.get("body").read())["embedding"]
+
+
 def lambda_handler(event, context):
     """
     Main entry point for the RDS Seeder.
@@ -36,10 +59,10 @@ def lambda_handler(event, context):
     # Establish database connection using environment variables
     print(f"Connecting to {os.environ['DB_HOST']}...")
     conn = pg8000.native.Connection(
+        password=get_db_password(),
         host=os.environ["DB_HOST"],
         database=os.environ["DB_NAME"],
         user=os.environ["DB_USER"],
-        password=os.environ["DB_PASSWORD"],
         port=5432,
         timeout=120,
         tcp_keepalive=True,  # Prevents VPC timeouts on long-running ingestions
@@ -93,7 +116,7 @@ def lambda_handler(event, context):
                 # Construct a descriptive context string for high-quality vector embeddings
                 # Concatenating columns specified in the YAML 'embedding_source_cols'
                 text_to_embed = ". ".join(
-                    [f"{col.capitalize()}: {row.get(col, '')}" for col in embed_cols]
+                    [f"{col}: {row.get(col, '')}" for col in embed_cols]
                 )
 
                 # Invoke Bedrock to generate a 1024-dimension vector
@@ -127,19 +150,3 @@ def lambda_handler(event, context):
         raise e
     finally:
         conn.close()
-
-
-def get_embedding(bedrock_client, text):
-    """
-    Invokes the Amazon Titan Text Embeddings v2 model via Bedrock.
-    Returns a 1024-dimension numerical vector for the provided text.
-    """
-    body = json.dumps({"inputText": text, "dimensions": 1024})
-
-    response = bedrock_client.invoke_model(
-        body=body,
-        modelId="amazon.titan-embed-text-v2:0",
-        contentType="application/json",
-    )
-
-    return json.loads(response.get("body").read())["embedding"]
