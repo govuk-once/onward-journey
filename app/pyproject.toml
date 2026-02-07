@@ -1,16 +1,20 @@
 [project]
 name = "onward-journey"
 version = "0.1.0"
-description = "Add your description here"
+description = "GOV.UK Onward Journey - AgentCore/Lambda Hybrid Orchestrator"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 dependencies = [
-    "boto3>=1.42.5",
+    "psycopg2-binary>=2.9.9",
+    "langchain-aws>=1.2.2",
+    "langgraph>=0.2.60",
+    "langchain-core>=0.3.33",
+    "pg8000>=1.31.2",
+    "langgraph-checkpoint-aws>=1.0.4",
+]
+
+[dependency-groups]
+dev = [
+    "boto3>=1.42.5",         # Only for local testing/IDE autocomplete
     "matplotlib>=3.9.4",
-    "numpy>=2.0.2",
-    "pandas>=2.3.3",
-    "scikit-learn>=1.6.1",
-    "seaborn>=0.13.2",
-    "sentence-transformers>=5.1.2",
-    "torch>=2.8.0",
 ]
