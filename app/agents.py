@@ -34,7 +34,6 @@ class OnwardJourneyAgent:
         best_practice_store: Optional[MemoryStore] = None,
         best_practice_k: int = 3,
         best_practice_outcome: str = "good",
-        prompt_for_feedback: bool = True,
         fast_answer_threshold: float = 0.95,
         fast_answer_exclude_outcome: str = "bad",
         guardrail_tags: Optional[list[str]] = None,
@@ -77,7 +76,6 @@ class OnwardJourneyAgent:
         self.best_practice_store = best_practice_store
         self.best_practice_k = best_practice_k
         self.best_practice_outcome = best_practice_outcome
-        self.prompt_for_feedback = prompt_for_feedback
         self.fast_answer_threshold = fast_answer_threshold
         self.fast_answer_exclude_outcome = fast_answer_exclude_outcome
         self.guardrail_tags = guardrail_tags
@@ -96,6 +94,9 @@ class OnwardJourneyAgent:
 
         # Initialize conversation history
         self.history: List[Dict[str, Any]] = [  ]
+
+        # Track last applied tags from :bp for per-turn updates
+        self._session_tags: Optional[list[str]] = None
 
     def _initialise_aws(self, aws_region: str, role_arn: Optional[str], role_session_name: str):
         if role_arn != None:
@@ -247,19 +248,21 @@ class OnwardJourneyAgent:
             return best_item.text
         return None
 
-    def _record_memory(self, user_text: str, assistant_text: Optional[str]) -> None:
+    def _record_memory(self, user_text: str, assistant_text: Optional[str], tags: Optional[list[str]] = None) -> None:
         """Persist a concise memory of the turn."""
         if not self.memory_store:
             return
         if assistant_text is None:
             assistant_text = ""
-        summary = f"User: {user_text.strip()} | Assistant: {assistant_text.strip()}"
+        # Summary is just the user question to anchor similarity search on queries
+        summary = user_text.strip()
         self.memory_store.add(
             session_id=self.session_id,
             role="assistant",
             text=assistant_text,
             summary=summary,
             outcome=None,
+            tags=tags,
         )
 
     def _record_best_practice(
@@ -282,6 +285,20 @@ class OnwardJourneyAgent:
             tags=tags,
         )
 
+    def _flush_session_memory(self) -> None:
+        """
+        Persist any deferred memory entries (for JSON store) and clear deferral.
+        """
+        if not self.memory_store:
+            return
+        try:
+            from memory_store import JsonMemoryStore
+            if isinstance(self.memory_store, JsonMemoryStore):
+                self.memory_store.set_defer_persist(False)
+                self.memory_store.persist()
+        except Exception:
+            pass
+
     def _send_message_and_handle_tools(self, prompt: str) -> str:
         """
         Sends a message to the Bedrock model and handles tool calls in a loop.
@@ -291,7 +308,6 @@ class OnwardJourneyAgent:
         if fast_answer:
             self._add_to_history(role="user", content=prompt)
             self._add_to_history(role="assistant", content=fast_answer)
-            self._record_memory(user_text=prompt, assistant_text=fast_answer)
             if self.verbose:
                 print("Fast answer served from session memory (no model call).")
             return fast_answer
@@ -346,7 +362,6 @@ class OnwardJourneyAgent:
                 if self.verbose:
                     print("Onward Journey Agent detects ambiguity. Returning clarification question.")
                 self.awaiting_clarification = True
-                self._record_memory(user_text=prompt, assistant_text=text_content)
                 return text_content
             if not tool_calls:
                 response_text = text_content if text_content else "I couldn't generate a response."
@@ -396,7 +411,6 @@ class OnwardJourneyAgent:
             # Loop continues: The next iteration of the while loop sends the history
             # including the tool results back to the model.
 
-        self._record_memory(user_text=prompt, assistant_text=response_text)
         return response_text
 
     def process_handoff(self) -> str:
@@ -436,12 +450,22 @@ class OnwardJourneyAgent:
         # 2. Start the interactive loop
         last_user: Optional[str] = None
         last_answer: Optional[str] = None
+        self._session_tags = None
+
+        # Defer disk writes for JSON memory store; enable at session end
+        try:
+            from memory_store import JsonMemoryStore  # local import to avoid cycle
+            if isinstance(self.memory_store, JsonMemoryStore):
+                self.memory_store.set_defer_persist(True)
+        except Exception:
+            pass
 
         while True:
             user_input = input("You: ")
 
             # Allow user to end the conversation
             if user_input.strip().lower() in ["quit", "exit", "end"]:
+                self._flush_session_memory()
                 print("\n👋 Conversation with Onward Journey Agent ended.")
                 break
 
@@ -462,6 +486,11 @@ class OnwardJourneyAgent:
                     outcome=outcome,
                     tags=tags,
                 )
+                if tags:
+                    # Apply tags to latest turn memory entry immediately
+                    self._session_tags = tags
+                    if self.memory_store:
+                        self.memory_store.update_last_tags(session_id=self.session_id, tags=tags)
                 print(f"Saved last turn as best-practice (outcome={outcome}, tags={tags}).")
                 continue
 
@@ -473,18 +502,8 @@ class OnwardJourneyAgent:
             print(f"\n Onward Journey Agent: {llm_response}\n")
             last_user = user_input
             last_answer = llm_response
-            if self.prompt_for_feedback and self.best_practice_store:
-                feedback = input("Was this helpful? (y/N): ").strip().lower()
-                if feedback == "y":
-                    self._record_best_practice(
-                        user_text=user_input,
-                        assistant_text=llm_response,
-                        outcome="good",
-                        tags=None,
-                    )
-                    print("Saved to best-practice memory.")
-                elif feedback == "n":
-                    print("Not saved to best-practice memory.")
+            # Record turn immediately for fast-answer reuse (disk write deferred)
+            self._record_memory(user_text=user_input, assistant_text=llm_response, tags=None)
 
     def query_csv_rag(self, user_query: str) -> str:
         """

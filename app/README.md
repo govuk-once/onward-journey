@@ -118,7 +118,7 @@ The RAG tool (query_csv_rag) remains the core component that operates locally to
   - `--best_practice_store json|in_memory|none` (default `json`)
   - `--best_practice_path <path>` (default `app/output/best_practice.json`)
   - `--best_practice_k <int>` (top-k helpful snippets to include)
-  - `--prompt_for_feedback` to ask “Was this helpful?” after each response (saves helpful replies to best-practice store)
+  - `--verbose` for debug logging (fast-answer hits, tool calls)
 
 ### Fast answer reuse
 
@@ -136,4 +136,4 @@ The RAG tool (query_csv_rag) remains the core component that operates locally to
 
 - Inside interactive mode, you can promote the last turn to a best-practice rule with tags:
   - `:bp <outcome> <tag1,tag2>` (example: `:bp good billing,refund`)
-  - This is handy to curate guardrails without relying on the feedback prompt.
+  - Best-practice saves happen immediately; session memory updates every turn for fast-answer reuse, but JSON persistence is deferred until you exit the chat. Tags from the most recent `:bp` are propagated to the latest turn’s memory entry and persisted on exit.

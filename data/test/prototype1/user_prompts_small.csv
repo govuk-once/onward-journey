@@ -1,0 +1,37 @@
+uid,phone_number,Q#,Question
+agent_dedicated_line_debt_management,0300 200 3887,1,What is the direct line to contact the HMRC for help with Debt managment?
+agent_dedicated_line_debt_management,0300 200 3887,2,What documents are required to begin the process for Debt with HMRC?
+agent_dedicated_line_tax_credits,0345 300 3943,1,What is the direct line to contact the HMRC for help with Tax credits?
+agent_dedicated_line_tax_credits,0345 300 3943,2,What documents are required to begin the process for Tax credits with HMRC?
+agent_dedicated_line_self_assessment_or_paye_for_individuals,0300 200 3311,1,What is the direct line to contact the HMRC for help with Pay as you earn?
+agent_dedicated_line_self_assessment_or_paye_for_individuals,0300 200 3311,2,What documents are required to begin the process for Paye with HMRC?
+bereavement_and_deceased_estate_enquiries,0300 322 9620,1,What is the direct line to contact the HMRC for help with Tax?
+bereavement_and_deceased_estate_enquiries,0300 322 9620,2,What documents are required to begin the process for Bereavement with HMRC?
+deceased_estate_helpline,0300 123 1071,1,What is the direct line to contact the HMRC for help with Estate?
+deceased_estate_helpline,0300 123 1071,2,What documents are required to begin the process for Bereavement with HMRC?
+Inheritance_tax_general_enquiries,0300 123 1072,1,What is the direct line to contact the HMRC for help with Inheritance tax?
+Inheritance_tax_general_enquiries,0300 123 1072,2,What documents are required to begin the process for Bereavement with HMRC?
+child_benefit_enquiries,0300 200 3100,1,What is the direct line to contact the HMRC for help with Claiming child benefit?
+child_benefit_enquiries,0300 200 3100,2,What documents are required to begin the process for Child benefits with HMRC?
+childcare_service_helpline,0300 123 4097,1,What is the direct line to contact the HMRC for help with Childcare?
+childcare_service_helpline,0300 123 4097,2,What documents are required to begin the process for Child benefits with HMRC?
+guardians_allowance_enquiries,0300 200 3100,1,What is the direct line to contact the HMRC for help with Guardian?
+guardians_allowance_enquiries,0300 200 3100,2,What documents are required to begin the process for Child benefits with HMRC?
+pension_schemes_forms_and_returns,0300 200 3600,1,What is the direct line to contact the HMRC for help with Pension form?
+pension_schemes_forms_and_returns,0300 200 3600,2,What documents are required to begin the process for Pension scheme with HMRC?
+pension_schemes_general_enquiries,0300 123 1079,1,What is the direct line to contact the HMRC for help with Pension scheme?
+pension_schemes_general_enquiries,0300 123 1079,2,What documents are required to begin the process for Pension scheme with HMRC?
+report_other_environmental_problems,0800 80 70 60,1,What is the direct line to contact the Environment Agency for help with Fish kill?
+report_other_environmental_problems,0800 80 70 60,2,What documents are required to begin the process for Biodiversity risk with Environment Agency?
+report_illegal_fishing_in_england,0800 80 70 60,1,What is the direct line to contact the Environment Agency for help with Fishing and hunting?
+report_illegal_fishing_in_england,0800 80 70 60,2,What documents are required to begin the process for Hunting with Environment Agency?
+report_a_flood_or_possible_cause_of_flooding,0800 80 70 60,1,What is the direct line to contact the Environment Agency for help with Erosion?
+report_a_flood_or_possible_cause_of_flooding,0800 80 70 60,2,What documents are required to begin the process for River bank damage with Environment Agency?
+Report_an_immigration_or_border_crime,0300 123 7000,1,What is the direct line to contact the Home Office for help with Illegal immigration?
+Report_an_immigration_or_border_crime,0300 123 7000,2,What documents are required to begin the process for Immigration crime with Home Office?
+vehicle_tax_and_sorn,0300 790 6802,1,What is the direct line to contact the DVLA for help with Sorn?
+vehicle_tax_and_sorn,0300 790 6802,2,What documents are required to begin the process for Tax with DVLA?
+tax_your_vehicle,0300 123 4321,1,What is the direct line to contact the DVLA for help with Motor tax?
+tax_your_vehicle,0300 123 4321,2,What documents are required to begin the process for Bike tax with DVLA?
+moj_general_enquires,0203 334 3555,1,What is the direct line to contact the MOJ for help with General enquires?
+moj_general_enquires,0203 334 3555,2,What documents are required to begin the process for General enquires with MOJ?

@@ -1,0 +1,642 @@
+[
+    {
+        "test_id": "Amb_Gen_1",
+        "topic": "Pension Schemes: forms and returns",
+        "query": "I'm trying to find the line for Pension Schemes.",
+        "expected_phone_number": "0300 200 3600",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: forms and returns' service under Pension Schemes."
+    },
+    {
+        "test_id": "Simple_Gen_2",
+        "topic": "Immigration",
+        "query": "Can you tell me the phone number for Immigration enquiries?",
+        "expected_phone_number": "0300 123 7000",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Simple_Gen_3",
+        "topic": "Bereavement: Inheritance Tax",
+        "query": "I need the phone number for the specific service: 'Inheritance Tax: general enquiries'.",
+        "expected_phone_number": "0300 123 1072",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_4",
+        "topic": "Agent Dedicated Line: Debt Management",
+        "query": "What is the number I need for help with Agent?",
+        "expected_phone_number": "0300 200 3887",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: Debt Managment ' service under Agent."
+    },
+    {
+        "test_id": "Amb_Gen_5",
+        "topic": "Child: Childcare Service",
+        "query": "What is the number I need for help with Child Benefit and other benefits?",
+        "expected_phone_number": "0300 123 4097",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Childcare Service helpline' service under Child Benefit and other benefits."
+    },
+    {
+        "test_id": "Amb_Gen_6",
+        "topic": "Environment and Countryside: Illegal Fishing",
+        "query": "What is the number I need for help with Environment and Countryside?",
+        "expected_phone_number": "0800 80 70 60",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Report illegal fishing in England' service under Environment and Countryside."
+    },
+    {
+        "test_id": "Simple_Gen_7",
+        "topic": "Environment and Countryside: Other Environmental Problems",
+        "query": "I need the phone number for the specific service: 'Report other environmental problems'.",
+        "expected_phone_number": "0800 80 70 60 ",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Simple_Gen_8",
+        "topic": "Agent Dedicated Line: Self Assessment",
+        "query": "I need the phone number for the specific service: 'Agent Dedicated Line: Self Assessment or PAYE for individuals'.",
+        "expected_phone_number": "0300 200 3311",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Simple_Gen_9",
+        "topic": "Immigration",
+        "query": "I need the helpline number for Immigration.",
+        "expected_phone_number": "0300 123 7000",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_10",
+        "topic": "Environment and Countryside: Flooding",
+        "query": "What is the number I need for help with Environment and Countryside?",
+        "expected_phone_number": "0800 80 70 60",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Report a flood or possible cause of flooding' service under Environment and Countryside."
+    },
+    {
+        "test_id": "Simple_Gen_11",
+        "topic": "Immigration",
+        "query": "Find the specific number for Immigration.",
+        "expected_phone_number": "0300 123 7000",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Simple_Gen_12",
+        "topic": "Child: Child Benefit enquiries",
+        "query": "I need the phone number for the specific service: 'Child Benefit: enquiries'.",
+        "expected_phone_number": "0300 200 3100",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Simple_Gen_13",
+        "topic": "Agent Dedicated Line: Self Assessment",
+        "query": "I need the phone number for the specific service: 'Agent Dedicated Line: Self Assessment or PAYE for individuals'.",
+        "expected_phone_number": "0300 200 3311",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Simple_Gen_14",
+        "topic": "Environment and Countryside: Illegal Fishing",
+        "query": "I need the phone number for the specific service: 'Report illegal fishing in England'.",
+        "expected_phone_number": "0800 80 70 60",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_15",
+        "topic": "Agent Dedicated Line: Debt Management",
+        "query": "What is the number I need for help with Agent?",
+        "expected_phone_number": "0300 200 3887",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: Debt Managment ' service under Agent."
+    },
+    {
+        "test_id": "Amb_Gen_16",
+        "topic": "Environment and Countryside: Illegal Fishing",
+        "query": "Can you route me to the correct service for Environment and Countryside?",
+        "expected_phone_number": "0800 80 70 60",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Report illegal fishing in England' service under Environment and Countryside."
+    },
+    {
+        "test_id": "Amb_Gen_17",
+        "topic": "Agent Dedicated Line: Debt Management",
+        "query": "I have a general question about Agent.",
+        "expected_phone_number": "0300 200 3887",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: Debt Managment ' service under Agent."
+    },
+    {
+        "test_id": "Amb_Gen_18",
+        "topic": "Bereavement: Inheritance Tax",
+        "query": "I have a general question about Bereavement.",
+        "expected_phone_number": "0300 123 1072",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Inheritance Tax: general enquiries' service under Bereavement."
+    },
+    {
+        "test_id": "Amb_Gen_19",
+        "topic": "Child: Guardian's Allowance enquiries",
+        "query": "What is the number I need for help with Child Benefit and other benefits?",
+        "expected_phone_number": "0300 200 3100",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Guardian's Allowance: enquiries' service under Child Benefit and other benefits."
+    },
+    {
+        "test_id": "Simple_Gen_20",
+        "topic": "Vehicle Tax",
+        "query": "I need the phone number for the specific service: 'Tax your vehicle'.",
+        "expected_phone_number": "0300 123 4321",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_21",
+        "topic": "Bereavement: Deceased Estate",
+        "query": "Can you route me to the correct service for Bereavement?",
+        "expected_phone_number": "0300 123 1071",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Deceased Estate Helpline' service under Bereavement."
+    },
+    {
+        "test_id": "Amb_Gen_22",
+        "topic": "Agent Dedicated Line: Self Assessment",
+        "query": "I'm trying to find the line for Agent.",
+        "expected_phone_number": "0300 200 3311",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: Self Assessment or PAYE for individuals' service under Agent."
+    },
+    {
+        "test_id": "Amb_Gen_23",
+        "topic": "Agent Dedicated Line: Self Assessment",
+        "query": "Can you route me to the correct service for Agent?",
+        "expected_phone_number": "0300 200 3311",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: Self Assessment or PAYE for individuals' service under Agent."
+    },
+    {
+        "test_id": "Simple_Gen_24",
+        "topic": "Child: Childcare Service",
+        "query": "I need the phone number for the specific service: 'Childcare Service helpline'.",
+        "expected_phone_number": "0300 123 4097",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Simple_Gen_25",
+        "topic": "Bereavement: Inheritance Tax",
+        "query": "I need the phone number for the specific service: 'Inheritance Tax: general enquiries'.",
+        "expected_phone_number": "0300 123 1072",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_26",
+        "topic": "Bereavement and deceased estate: enquiries",
+        "query": "What is the number I need for help with Bereavement?",
+        "expected_phone_number": "0300 322 9620",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Bereavement and deceased estate: enquiries' service under Bereavement."
+    },
+    {
+        "test_id": "Simple_Gen_27",
+        "topic": "Immigration",
+        "query": "What is the contact number related to Immigration?",
+        "expected_phone_number": "0300 123 7000",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Simple_Gen_28",
+        "topic": "Bereavement and deceased estate: enquiries",
+        "query": "I need the phone number for the specific service: 'Bereavement and deceased estate: enquiries'.",
+        "expected_phone_number": "0300 322 9620",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_29",
+        "topic": "Agent Dedicated Line: tax credits",
+        "query": "I have a general question about Agent.",
+        "expected_phone_number": "0345 300 3943",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: tax credits' service under Agent."
+    },
+    {
+        "test_id": "Amb_Gen_30",
+        "topic": "Child: Guardian's Allowance enquiries",
+        "query": "What is the number I need for help with Child Benefit and other benefits?",
+        "expected_phone_number": "0300 200 3100",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Guardian's Allowance: enquiries' service under Child Benefit and other benefits."
+    },
+    {
+        "test_id": "Amb_Gen_31",
+        "topic": "Pension Schemes: general enquiries",
+        "query": "Can you route me to the correct service for Pension Schemes?",
+        "expected_phone_number": "0300 123 1079",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: general enquiries' service under Pension Schemes."
+    },
+    {
+        "test_id": "Simple_Gen_32",
+        "topic": "Agent Dedicated Line: Debt Management",
+        "query": "I need the phone number for the specific service: 'Agent Dedicated Line: Debt Managment '.",
+        "expected_phone_number": "0300 200 3887",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_33",
+        "topic": "Pension Schemes: general enquiries",
+        "query": "What is the number I need for help with Pension Schemes?",
+        "expected_phone_number": "0300 123 1079",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: general enquiries' service under Pension Schemes."
+    },
+    {
+        "test_id": "Amb_Gen_34",
+        "topic": "Agent Dedicated Line: Self Assessment",
+        "query": "Can you route me to the correct service for Agent?",
+        "expected_phone_number": "0300 200 3311",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: Self Assessment or PAYE for individuals' service under Agent."
+    },
+    {
+        "test_id": "Amb_Gen_35",
+        "topic": "Vehicle Tax",
+        "query": "I'm trying to find the line for Vehicle Tax.",
+        "expected_phone_number": "0300 123 4321",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Tax your vehicle' service under Vehicle Tax."
+    },
+    {
+        "test_id": "Amb_Gen_36",
+        "topic": "Vehicle Tax",
+        "query": "Can you route me to the correct service for Vehicle Tax?",
+        "expected_phone_number": "0300 123 4321",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Tax your vehicle' service under Vehicle Tax."
+    },
+    {
+        "test_id": "Amb_Gen_37",
+        "topic": "Environment and Countryside: Flooding",
+        "query": "I have a general question about Environment and Countryside.",
+        "expected_phone_number": "0800 80 70 60",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Report a flood or possible cause of flooding' service under Environment and Countryside."
+    },
+    {
+        "test_id": "Simple_Gen_38",
+        "topic": "Bereavement: Deceased Estate",
+        "query": "I need the phone number for the specific service: 'Deceased Estate Helpline'.",
+        "expected_phone_number": "0300 123 1071",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_39",
+        "topic": "Bereavement and deceased estate: enquiries",
+        "query": "I have a general question about Bereavement.",
+        "expected_phone_number": "0300 322 9620",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Bereavement and deceased estate: enquiries' service under Bereavement."
+    },
+    {
+        "test_id": "Amb_Gen_40",
+        "topic": "Agent Dedicated Line: tax credits",
+        "query": "I have a general question about Agent.",
+        "expected_phone_number": "0345 300 3943",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: tax credits' service under Agent."
+    },
+    {
+        "test_id": "Amb_Gen_41",
+        "topic": "Agent Dedicated Line: tax credits",
+        "query": "Can you route me to the correct service for Agent?",
+        "expected_phone_number": "0345 300 3943",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: tax credits' service under Agent."
+    },
+    {
+        "test_id": "Amb_Gen_42",
+        "topic": "Environment and Countryside: Other Environmental Problems",
+        "query": "What is the number I need for help with Environment and Countryside?",
+        "expected_phone_number": "0800 80 70 60 ",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Report other environmental problems' service under Environment and Countryside."
+    },
+    {
+        "test_id": "Amb_Gen_43",
+        "topic": "Bereavement: Deceased Estate",
+        "query": "I have a general question about Bereavement.",
+        "expected_phone_number": "0300 123 1071",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Deceased Estate Helpline' service under Bereavement."
+    },
+    {
+        "test_id": "Amb_Gen_44",
+        "topic": "Pension Schemes: general enquiries",
+        "query": "What is the number I need for help with Pension Schemes?",
+        "expected_phone_number": "0300 123 1079",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: general enquiries' service under Pension Schemes."
+    },
+    {
+        "test_id": "Simple_Gen_45",
+        "topic": "Pension Schemes: general enquiries",
+        "query": "I need the phone number for the specific service: 'Pension schemes: general enquiries'.",
+        "expected_phone_number": "0300 123 1079",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_46",
+        "topic": "Vehicle Tax",
+        "query": "What is the number I need for help with Vehicle Tax?",
+        "expected_phone_number": "0300 790 6802",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Vehicle tax and SORN' service under Vehicle Tax."
+    },
+    {
+        "test_id": "Amb_Gen_47",
+        "topic": "Pension Schemes: general enquiries",
+        "query": "What is the number I need for help with Pension Schemes?",
+        "expected_phone_number": "0300 123 1079",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: general enquiries' service under Pension Schemes."
+    },
+    {
+        "test_id": "Amb_Gen_48",
+        "topic": "Child: Childcare Service",
+        "query": "What is the number I need for help with Child Benefit and other benefits?",
+        "expected_phone_number": "0300 123 4097",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Childcare Service helpline' service under Child Benefit and other benefits."
+    },
+    {
+        "test_id": "Simple_Gen_49",
+        "topic": "Vehicle Tax",
+        "query": "I need the phone number for the specific service: 'Tax your vehicle'.",
+        "expected_phone_number": "0300 123 4321",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Simple_Gen_50",
+        "topic": "Vehicle Tax",
+        "query": "I need the phone number for the specific service: 'Vehicle tax and SORN'.",
+        "expected_phone_number": "0300 790 6802",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_51",
+        "topic": "Pension Schemes: forms and returns",
+        "query": "I'm trying to find the line for Pension Schemes.",
+        "expected_phone_number": "0300 200 3600",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: forms and returns' service under Pension Schemes."
+    },
+    {
+        "test_id": "Amb_Gen_52",
+        "topic": "Pension Schemes: general enquiries",
+        "query": "I have a general question about Pension Schemes.",
+        "expected_phone_number": "0300 123 1079",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: general enquiries' service under Pension Schemes."
+    },
+    {
+        "test_id": "Amb_Gen_53",
+        "topic": "Pension Schemes: general enquiries",
+        "query": "I'm trying to find the line for Pension Schemes.",
+        "expected_phone_number": "0300 123 1079",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: general enquiries' service under Pension Schemes."
+    },
+    {
+        "test_id": "Amb_Gen_54",
+        "topic": "Vehicle Tax",
+        "query": "I'm trying to find the line for Vehicle Tax.",
+        "expected_phone_number": "0300 790 6802",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Vehicle tax and SORN' service under Vehicle Tax."
+    },
+    {
+        "test_id": "Simple_Gen_55",
+        "topic": "Child: Childcare Service",
+        "query": "I need the phone number for the specific service: 'Childcare Service helpline'.",
+        "expected_phone_number": "0300 123 4097",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_56",
+        "topic": "Environment and Countryside: Other Environmental Problems",
+        "query": "Can you route me to the correct service for Environment and Countryside?",
+        "expected_phone_number": "0800 80 70 60 ",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Report other environmental problems' service under Environment and Countryside."
+    },
+    {
+        "test_id": "Amb_Gen_57",
+        "topic": "Vehicle Tax",
+        "query": "What is the number I need for help with Vehicle Tax?",
+        "expected_phone_number": "0300 123 4321",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Tax your vehicle' service under Vehicle Tax."
+    },
+    {
+        "test_id": "Amb_Gen_58",
+        "topic": "Vehicle Tax",
+        "query": "Can you route me to the correct service for Vehicle Tax?",
+        "expected_phone_number": "0300 123 4321",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Tax your vehicle' service under Vehicle Tax."
+    },
+    {
+        "test_id": "Amb_Gen_59",
+        "topic": "Pension Schemes: general enquiries",
+        "query": "What is the number I need for help with Pension Schemes?",
+        "expected_phone_number": "0300 123 1079",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: general enquiries' service under Pension Schemes."
+    },
+    {
+        "test_id": "Amb_Gen_60",
+        "topic": "Pension Schemes: forms and returns",
+        "query": "Can you route me to the correct service for Pension Schemes?",
+        "expected_phone_number": "0300 200 3600",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: forms and returns' service under Pension Schemes."
+    },
+    {
+        "test_id": "Amb_Gen_61",
+        "topic": "Environment and Countryside: Other Environmental Problems",
+        "query": "What is the number I need for help with Environment and Countryside?",
+        "expected_phone_number": "0800 80 70 60 ",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Report other environmental problems' service under Environment and Countryside."
+    },
+    {
+        "test_id": "Amb_Gen_62",
+        "topic": "Agent Dedicated Line: tax credits",
+        "query": "I'm trying to find the line for Agent.",
+        "expected_phone_number": "0345 300 3943",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: tax credits' service under Agent."
+    },
+    {
+        "test_id": "Amb_Gen_63",
+        "topic": "Pension Schemes: general enquiries",
+        "query": "I have a general question about Pension Schemes.",
+        "expected_phone_number": "0300 123 1079",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: general enquiries' service under Pension Schemes."
+    },
+    {
+        "test_id": "Amb_Gen_64",
+        "topic": "Pension Schemes: forms and returns",
+        "query": "I have a general question about Pension Schemes.",
+        "expected_phone_number": "0300 200 3600",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: forms and returns' service under Pension Schemes."
+    },
+    {
+        "test_id": "Amb_Gen_65",
+        "topic": "Agent Dedicated Line: Self Assessment",
+        "query": "I have a general question about Agent.",
+        "expected_phone_number": "0300 200 3311",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: Self Assessment or PAYE for individuals' service under Agent."
+    },
+    {
+        "test_id": "Simple_Gen_66",
+        "topic": "Vehicle Tax",
+        "query": "I need the phone number for the specific service: 'Tax your vehicle'.",
+        "expected_phone_number": "0300 123 4321",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_67",
+        "topic": "Child: Guardian's Allowance enquiries",
+        "query": "I have a general question about Child Benefit and other benefits.",
+        "expected_phone_number": "0300 200 3100",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Guardian's Allowance: enquiries' service under Child Benefit and other benefits."
+    },
+    {
+        "test_id": "Amb_Gen_68",
+        "topic": "Environment and Countryside: Other Environmental Problems",
+        "query": "I'm trying to find the line for Environment and Countryside.",
+        "expected_phone_number": "0800 80 70 60 ",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Report other environmental problems' service under Environment and Countryside."
+    },
+    {
+        "test_id": "Simple_Gen_69",
+        "topic": "Child: Childcare Service",
+        "query": "I need the phone number for the specific service: 'Childcare Service helpline'.",
+        "expected_phone_number": "0300 123 4097",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_70",
+        "topic": "Pension Schemes: forms and returns",
+        "query": "I'm trying to find the line for Pension Schemes.",
+        "expected_phone_number": "0300 200 3600",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Pension schemes: forms and returns' service under Pension Schemes."
+    },
+    {
+        "test_id": "Amb_Gen_71",
+        "topic": "Bereavement: Inheritance Tax",
+        "query": "I'm trying to find the line for Bereavement.",
+        "expected_phone_number": "0300 123 1072",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Inheritance Tax: general enquiries' service under Bereavement."
+    },
+    {
+        "test_id": "Amb_Gen_72",
+        "topic": "Agent Dedicated Line: Self Assessment",
+        "query": "I'm trying to find the line for Agent.",
+        "expected_phone_number": "0300 200 3311",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: Self Assessment or PAYE for individuals' service under Agent."
+    },
+    {
+        "test_id": "Amb_Gen_73",
+        "topic": "Vehicle Tax",
+        "query": "I'm trying to find the line for Vehicle Tax.",
+        "expected_phone_number": "0300 123 4321",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Tax your vehicle' service under Vehicle Tax."
+    },
+    {
+        "test_id": "Simple_Gen_74",
+        "topic": "Environment and Countryside: Other Environmental Problems",
+        "query": "What is the contact number related to Environment and Countryside?",
+        "expected_phone_number": "0800 80 70 60",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Simple_Gen_75",
+        "topic": "Bereavement: Deceased Estate",
+        "query": "I need the helpline number for Bereavement.",
+        "expected_phone_number": "0300 123 1072",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Simple_Gen_76",
+        "topic": "Bereavement: Deceased Estate",
+        "query": "Can you tell me the phone number for Bereavement enquiries?",
+        "expected_phone_number": "0300 123 1072",
+        "is_ambiguous": false,
+        "simulated_clarification_response": "N/A"
+    },
+    {
+        "test_id": "Amb_Gen_77",
+        "topic": "Agent Dedicated Line: tax credits",
+        "query": "What is the number I need for help with Agent?",
+        "expected_phone_number": "0345 300 3943",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Agent Dedicated Line: tax credits' service under Agent."
+    },
+    {
+        "test_id": "Amb_Gen_78",
+        "topic": "Child: Child Benefit enquiries",
+        "query": "I'm trying to find the line for Child Benefit and other benefits.",
+        "expected_phone_number": "0300 200 3100",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Child Benefit: enquiries' service under Child Benefit and other benefits."
+    },
+    {
+        "test_id": "Amb_Gen_79",
+        "topic": "Environment and Countryside: Illegal Fishing",
+        "query": "Can you route me to the correct service for Environment and Countryside?",
+        "expected_phone_number": "0800 80 70 60",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Report illegal fishing in England' service under Environment and Countryside."
+    },
+    {
+        "test_id": "Amb_Gen_80",
+        "topic": "Bereavement and deceased estate: enquiries",
+        "query": "I'm trying to find the line for Bereavement.",
+        "expected_phone_number": "0300 322 9620",
+        "is_ambiguous": true,
+        "simulated_clarification_response": "I am dealing with the 'Bereavement and deceased estate: enquiries' service under Bereavement."
+    }
+]

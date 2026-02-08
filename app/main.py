@@ -45,8 +45,10 @@ class AgentRunner:
         best_practice_store_type: str = "json",
         best_practice_path: str = DEFAULT_BEST_PRACTICE_PATH,
         best_practice_k: int = 3,
-        prompt_for_feedback: bool = True,
         fast_answer_threshold: float = 0.95,
+        fast_answer_exclude_outcome: str = "bad",
+        guardrail_tags: list[str] | None = None,
+        verbose: bool = False,
     ):
         """
         Description: Initializes the manager with essential configuration parameters and sets seeds.
@@ -86,8 +88,10 @@ class AgentRunner:
         self.best_practice_store_type = best_practice_store_type
         self.best_practice_path = best_practice_path
         self.best_practice_k = best_practice_k
-        self.prompt_for_feedback = prompt_for_feedback
         self.fast_answer_threshold = fast_answer_threshold
+        self.fast_answer_exclude_outcome = fast_answer_exclude_outcome
+        self.guardrail_tags = guardrail_tags
+        self.verbose = verbose
 
         self._set_all_seeds(self.seed)
 
@@ -192,8 +196,10 @@ class AgentRunner:
             memory_k=self.memory_k,
             best_practice_store=best_practice_store,
             best_practice_k=self.best_practice_k,
-            prompt_for_feedback=self.prompt_for_feedback,
             fast_answer_threshold=self.fast_answer_threshold,
+            fast_answer_exclude_outcome=self.fast_answer_exclude_outcome,
+            guardrail_tags=self.guardrail_tags,
+            verbose=self.verbose,
         )
 
 
@@ -315,16 +321,16 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--prompt_for_feedback",
-        action="store_true",
-        help="Prompt after each response to mark it helpful and save to best-practice store.",
-    )
-
-    parser.add_argument(
         "--fast_answer_threshold",
         type=float,
         default=0.95,
         help="Cosine similarity threshold (0-1) to reuse a prior answer without an LLM call.",
+    )
+
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging for debugging (e.g., fast-answer hits, tool calls).",
     )
 
     args = parser.parse_args()
@@ -356,10 +362,10 @@ if __name__ == "__main__":
         best_practice_store_type=args.best_practice_store,
         best_practice_path=args.best_practice_path,
         best_practice_k=args.best_practice_k,
-        prompt_for_feedback=args.prompt_for_feedback,
         fast_answer_threshold=args.fast_answer_threshold,
         fast_answer_exclude_outcome="bad",
         guardrail_tags=[t.strip() for t in args.guardrail_tags.split(",")] if args.guardrail_tags else None,
+        verbose=args.verbose,
     )
 
     # Execute the objects call method with the specified mode

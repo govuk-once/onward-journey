@@ -16,10 +16,18 @@ def prototype_one_test(oj_agent: OnwardJourneyAgent, test_queries : List[Dict[st
 def prototype_two_test(oj_agent: OnwardJourneyAgent, test_queries : List[Dict[str, Any]], output_dir: str):
     """
     """
+    # Ensure any JSON memory store persists after the run (helps with fast-answer reuse across thresholds)
+    try:
+        persist_memory = oj_agent._flush_session_memory
+    except AttributeError:
+        persist_memory = lambda: None
+
     # clarification mode trial
     df_clarity = prototype_two_evaluation_trial(oj_agent, "CLARITY (Two-Turn)", test_queries, forced_mode=False)
     # one turn mode trial
     df_forced  = prototype_two_evaluation_trial(oj_agent, "FORCED (One-Turn)", test_queries, forced_mode=True)
+    # Persist any deferred memory writes (for JSON store)
+    persist_memory()
 
     # Calculate Clarification Success Gain (CSG) Metric
     quantitative_metrics = clarification_success_gain_metric(df_clarity, df_forced)
@@ -92,6 +100,12 @@ def prototype_two_evaluation_trial(oj_agent: OnwardJourneyAgent, trial_name: str
 
             extracted_phone = extract_and_standardize_phone(agent_response)
             match = 'PASS' if extracted_phone == test['expected_phone_number'] else 'FAIL'
+
+            # Record turn in session memory for potential fast-answer reuse across cases
+            try:
+                oj_agent._record_memory(user_text=query, assistant_text=agent_response, tags=None)
+            except Exception:
+                pass
 
             results.append({
                 'test_id': test.get('test_id', i),

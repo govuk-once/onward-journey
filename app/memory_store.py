@@ -156,6 +156,18 @@ class MemoryStore:
         top_indices = scores.argsort()[-k:][::-1]
         return [(pool[i], float(scores[i])) for i in top_indices]
 
+    def update_last_tags(self, session_id: str, tags: list[str]) -> None:
+        """
+        Update the tags on the most recent memory entry for the given session.
+        Used to align session memory metadata with admin :bp tagging.
+        """
+        session_items = [i for i in self._items if i.session_id == session_id]
+        if not session_items:
+            return
+        latest = max(session_items, key=lambda i: i.turn_index)
+        latest.tags = tags
+        self._after_update()
+
     def _next_turn_index(self, session_id: str) -> int:
         session_items = [i for i in self._items if i.session_id == session_id]
         if not session_items:
@@ -182,6 +194,10 @@ class MemoryStore:
         """Hook for subclasses to persist changes."""
         return
 
+    def _after_update(self) -> None:
+        """Hook for subclasses to persist updates."""
+        return
+
 
 class JsonMemoryStore(MemoryStore):
     """File-backed memory store using JSON for simple persistence."""
@@ -193,6 +209,7 @@ class JsonMemoryStore(MemoryStore):
         max_items_per_session: Optional[int] = None,
     ):
         self.file_path = file_path
+        self.defer_persist: bool = False
         dir_path = os.path.dirname(self.file_path) or "."
         os.makedirs(dir_path, exist_ok=True)
         super().__init__(
@@ -225,6 +242,21 @@ class JsonMemoryStore(MemoryStore):
             self._items.append(item)
 
     def _after_add(self) -> None:
+        if self.defer_persist:
+            return
+        self._save_to_disk()
+
+    def _after_update(self) -> None:
+        if self.defer_persist:
+            return
+        self._save_to_disk()
+
+    def set_defer_persist(self, defer: bool) -> None:
+        """Enable/disable autosave; when enabled, caller must call persist()."""
+        self.defer_persist = defer
+
+    def persist(self) -> None:
+        """Force a save of current items to disk."""
         self._save_to_disk()
 
     def _save_to_disk(self) -> None:

@@ -218,3 +218,7 @@ infrastructure/local.auto.tfvars
 # zsh
 .zshrc
 AGENTS.md
+.DS_Store
+docs/
+output/
+output/memory.json
