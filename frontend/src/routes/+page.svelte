@@ -8,8 +8,18 @@
     deploymentId: string;
     region: string;
     token: string;
-    reason: string;
+    reason: string; 
   }
+
+  interface Message {
+    id: string;
+    user: string;
+    message: string;
+    isSelf: boolean;
+    timestamp?: string;
+    agentId?: string;
+  }
+  
 
   interface Message {
     id: string;
