@@ -13,7 +13,7 @@ from helpers                  import SearchResult
 
 
 import asyncio
-import tools 
+import tools
 
 load_dotenv()
 
@@ -100,7 +100,7 @@ class HandOffMixin:
 
 class BaseAgent:
     def __init__(self, model_name: str, aws_region: str, temperature: float = 0.0):
-            
+
             self.client = boto3.client(service_name="bedrock-runtime", region_name=aws_region)
             self.model_name = model_name
             self.temperature = temperature
@@ -134,7 +134,7 @@ class BaseAgent:
                 resp = self.client.invoke_model(modelId=self.model_name, body=json.dumps(body))
                 resp_body = json.loads(resp['body'].read())
                 content = resp_body.get('content', [])
-                
+
                 text = next((c['text'] for c in content if c['type'] == 'text'), None)
                 tool_use = [c for c in content if c['type'] == 'tool_use']
 
@@ -144,18 +144,18 @@ class BaseAgent:
                     return text or "I encountered an error."
 
                 results = []
-                handoff_signal = None 
+                handoff_signal = None
 
                 for call in tool_use:
                     func = self.available_tools[call['name']]
                     args = call['input']
                     if func.__module__ == 'tools':
                         args['history'] = deepcopy(self.history)
-                    
+
                     out = await func(**args) if asyncio.iscoroutinefunction(func) else func(**args)
 
                     if "SIGNAL: initiate_live_handoff" in str(out):
-                                        handoff_signal = out 
+                                        handoff_signal = out
 
                     results.append({
                         "type": "tool_result",
@@ -172,15 +172,15 @@ class BaseAgent:
 
                     final_body = body.copy()
                     final_body["messages"] = self.history
-                    
+
                     final_resp = self.client.invoke_model(modelId=self.model_name, body=json.dumps(final_body))
                     final_resp_body = json.loads(final_resp['body'].read())
                     final_text = next((c['text'] for c in final_resp_body.get('content', []) if c['type'] == 'text'), "Transferring...")
-                    
+
                     return f"{final_text}\n\n{handoff_signal}"
 
 class GovUKAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, GovUKSearchMixin):
-    def __init__(self, handoff_package: dict, 
+    def __init__(self, handoff_package: dict,
                  embedding_model:str = "amazon.titan-embed-text-v2:0",
                  model_name: str = "anthropic.claude-3-7-sonnet-20250219-v1:0",
                  aws_region: str = 'eu-west-2',
@@ -223,7 +223,7 @@ class OnwardJourneyAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchM
         self.verbose = verbose
         self.client = boto3.client(service_name="bedrock-runtime", region_name=aws_region)
 
-        # Onward Journey related 
+        # Onward Journey related
         self.handoff_package = handoff_package
         self.embeddings = vector_store_embeddings
         self.chunk_data = vector_store_chunks
@@ -248,9 +248,9 @@ class OnwardJourneyAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchM
                     "Make sure your responses are formatted well for the user to read." \
                     "Always be looking to clarify if there is any ambiguity in the user's request."
                     "You can use both tools if the query requires a cross-referenced answer."
-                    "If a phone number is provided for a MOJ-related query, you must call the `connect_to_live_chat_MOJ` tool" 
+                    "If a phone number is provided for a MOJ-related query, you must call the `connect_to_live_chat_MOJ` tool"
                     "to transfer the user to a live agent IF they want a human agent. If a phone number is provided for an "
-                    "immigration-related query, you must call the `connect_to_live_chat_immigration` tool to transfer the user" 
+                    "immigration-related query, you must call the `connect_to_live_chat_immigration` tool to transfer the user"
                     "to a live agent IF they want a human agent. All other live chats are currently not available."
                     "If a phone number is provided for a HMRC pensions, forms and returns related query, you must call the `connect_to_live_chat_HMRC_pensions_forms_and_returns` tool" \
                     "to transfer the user to a live agent IF they want a human agent."

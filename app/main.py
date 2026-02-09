@@ -111,9 +111,7 @@ def get_args(parser):
                         help=f'AWS region to use for the Bedrock client (default: eu-west-2).')
     parser.add_argument('--region', type=str, default="eu-west-2",
                         help=f'AWS region to use for the Bedrock client (default: eu-west-2).')
-
     parser.add_argument('--output_dir', type=str, help='Directory to save test outputs.')
-
     parser.add_argument('--role_arn', type=str, default=None, help='AWS Role ARN for Bedrock access (if required).')
 
     return parser.parse_args()

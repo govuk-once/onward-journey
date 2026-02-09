@@ -8,7 +8,7 @@
     deploymentId: string;
     region: string;
     token: string;
-    reason: string; 
+    reason: string;
   }
 
   interface Message {
@@ -19,21 +19,21 @@
     timestamp?: string;
     agentId?: string;
   }
-  
+
 
 
   // --- State ---
-  let scrollContainer: HTMLElement | undefined = $state(); 
-  
-let { data }: { data: { messages?: Message[] } } = $props();
-let chatMessages = $state<Message[]>(data.messages ?? []);  
+  let scrollContainer: HTMLElement | undefined = $state();
 
-  let isLoading = $state(false); 
-  let isLiveChat = $state(false); 
-  let socket: WebSocket | null = $state(null); 
-  let sessionToken = $state(""); 
-  let handoffProcessed = $state(false); 
-  
+let { data }: { data: { messages?: Message[] } } = $props();
+let chatMessages = $state<Message[]>(data.messages ?? []);
+
+  let isLoading = $state(false);
+  let isLiveChat = $state(false);
+  let socket: WebSocket | null = $state(null);
+  let sessionToken = $state("");
+  let handoffProcessed = $state(false);
+
   let handoffPackage = $state({
       final_conversation_history: [
         { role: "user", content: [{ type: "text", text: "I'm trying to find the line for Pension Schemes." }] },
@@ -42,7 +42,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
     'BX9 1GH, United Kingdom. You can find phone contact details for other HMRC services on the Contact HMRC page. GOV.UK Chat can make mistakes. \
     'Check GOV.UK pages for important information. GOV.UK pages used in this answer (links open in a new tab)'" }] },
       ]
-    }); 
+    });
 
   // --- Actions ---
   function autoScroll(node: HTMLElement) {
@@ -80,20 +80,20 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
         body: JSON.stringify({ transcript })
       });
       if (!res.ok) throw new Error("Server Error");
-      
+
       const data = await res.json();
-      chatMessages = [...chatMessages, { 
-        message: data.summary || "I'm back. How can I help you further?", 
-        user: "GOV.UK Onward Journey Agent", 
-        isSelf: false, 
-        id: uuid() 
+      chatMessages = [...chatMessages, {
+        message: data.summary || "I'm back. How can I help you further?",
+        user: "GOV.UK Onward Journey Agent",
+        isSelf: false,
+        id: uuid()
       }];
     } catch {
-      chatMessages = [...chatMessages, { 
-        message: "I've reconnected, but I couldn't summarize the previous chat.", 
-        user: "System", 
-        isSelf: false, 
-        id: uuid() 
+      chatMessages = [...chatMessages, {
+        message: "I've reconnected, but I couldn't summarize the previous chat.",
+        user: "System",
+        isSelf: false,
+        id: uuid()
       }];
     } finally {
       isLiveChat = false;
@@ -129,9 +129,9 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
     }
 
     isLiveChat = true;
-    sessionToken = config.token; 
+    sessionToken = config.token;
     const uri = `wss://webmessaging.${config.region}/v1?deploymentId=${config.deploymentId}`;
-    const newSocket = new WebSocket(uri); 
+    const newSocket = new WebSocket(uri);
     socket = newSocket;
 
     newSocket.onopen = () => {
@@ -144,7 +144,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
 
     newSocket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.class === "SessionResponse" && data.code === 200) { 
+      if (data.class === "SessionResponse" && data.code === 200) {
           const currentSessionHistory = chatMessages
             .map((m: Message) => {
               const time = m.timestamp ? `[${m.timestamp}] ` : "";
@@ -156,7 +156,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
           const fullContext = `--- SYSTEM: CONTINUED HANDOFF CONTEXT ---\n` +
                               `REASON: ${config.reason}\n\n` +
                               `PREVIOUS INTERACTION LOG:\n${currentSessionHistory}`;
-          
+
           newSocket.send(JSON.stringify({
             action: "onMessage",
             token: sessionToken,
@@ -176,17 +176,17 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
         chatMessages = [...chatMessages, {
           message: data.body.text,
           user: "Live Agent",
-          agentId: data.metadata?.externalContactId || "Advisor", 
+          agentId: data.metadata?.externalContactId || "Advisor",
           isSelf: false,
           id: uuid(),
-          timestamp: new Date().toLocaleTimeString() 
+          timestamp: new Date().toLocaleTimeString()
         }];
       }
     };
 
     newSocket.onclose = () => {
       isLiveChat = false;
-      socket = null; 
+      socket = null;
       sessionToken="";
       returnToAIAgent();
     };
@@ -195,7 +195,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
   async function handleSendMessage(userText: string) {
     if (!userText.trim() || isLoading) return;
     chatMessages = [...chatMessages, { message: userText, user: "You", isSelf: true, id: uuid() }];
-    
+
     if (isLiveChat && socket?.readyState === 1) {
       socket.send(JSON.stringify({
         action: "onMessage",
@@ -222,11 +222,11 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
         chatMessages = [...chatMessages, { message: "Transferring to a live agent...", user: "System", isSelf: false, id: uuid() }];
         setupGenesysSocket(config);
       } else {
-        chatMessages = [...chatMessages, { 
-          message: responseText, 
-          user: "GOV.UK Onward Journey Agent", 
-          isSelf: false, 
-          id: uuid() 
+        chatMessages = [...chatMessages, {
+          message: responseText,
+          user: "GOV.UK Onward Journey Agent",
+          isSelf: false,
+          id: uuid()
         }];
       }
     } catch {
@@ -255,7 +255,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
   {/if}
 
   <div bind:this={scrollContainer} use:autoScroll class="app-conversation-layout__wrapper app-conversation-layout__width-restrictor">
-    
+
     {#if handoffPackage.final_conversation_history.length > 0}
       <details class="govuk-details handoff-details">
         <summary class="govuk-details__summary">
@@ -265,7 +265,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
           <div class="history-list">
             {#each handoffPackage.final_conversation_history as history, i (i)}
               <p class="govuk-body-s">
-                <strong>{history.role === 'user' ? 'User' : 'GOV.UK Chat'}:</strong> 
+                <strong>{history.role === 'user' ? 'User' : 'GOV.UK Chat'}:</strong>
                 {history.content[0].text}
               </p>
             {/each}
@@ -282,7 +282,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
         </div>
       </details>
     {/if}
-    
+
     <div class="message-feed">
       {#each chatMessages as m (m.id)}
         <div class="message-bubble {m.isSelf ? 'user' : 'agent'}">

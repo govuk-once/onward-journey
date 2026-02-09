@@ -55,7 +55,7 @@ async def hand_back_to_agent(request: HandBackRequest):
         for entry in request.transcript:
             speaker = "Live Agent" if entry['role'] == 'assistant' else "User"
             agent._add_to_history(role=entry['role'], text=f"[{speaker}]: {entry['text']}")
-        
+
         # Explicitly asking for a structured summary in Markdown
         summary_prompt = (
             "I am back. Please provide a structured Markdown summary of the live chat "

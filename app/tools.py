@@ -7,8 +7,8 @@ async def initiate_live_handoff(reason: str, deployment_id_env: str, history: Li
     """Generic logic for all live chat transfers to reduce code duplication."""
     # Extract recent user queries for context summary
     user_queries = [
-        c['text'] for m in history 
-        for c in m['content'] 
+        c['text'] for m in history
+        for c in m['content']
         if m['role'] == 'user' and c['type'] == 'text'
     ]
     summary = f"User is asking about: {reason}. Context: {' | '.join(user_queries[-3:])}"
