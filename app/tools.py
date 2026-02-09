@@ -33,48 +33,44 @@ async def connect_to_immigration(reason: str, history: List[Dict[str, Any]]):
 async def connect_to_hmrc(reason: str, history: List[Dict[str, Any]]):
     return await initiate_live_handoff(reason, 'GENESYS_DEPLOYMENT_ID_PENSIONS_FORMS_AND_RETURNS', history)
 
-def get_tool_definitions(strategy: int) -> List[Dict[str, Any]]:
-    """Returns the JSON declarations for Bedrock based on the selected strategy."""
-    
-    oj_tool = {
+def get_internal_kb_definition() -> List[Dict[str, Any]]:
+    return [{
         "name": "query_internal_kb",
-        "description": "Search specialized internal Onward Journey data for status and private guidance.",
+        "description": "Search specialized internal Onward Journey data for guidance.",
         "input_schema": {
             "type": "object",
             "properties": {"query": {"type": "string"}},
             "required": ["query"],
-        },
-    }
-
-    govuk_tool = {
-        "name": "query_govuk_kb",
-        "description": "Search public GOV.UK policy, legislation, and public-facing services.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-            "required": ["query"],
-        },
-    }
-
-    live_chat_tools = [
-        {
-            "name": "connect_to_live_chat_MOJ",
-            "description": "Call for MOJ human assistance or phone transfers.",
-            "input_schema": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}
-        },
-        {
-            "name": "connect_to_live_chat_immigration",
-            "description": "Call for immigration human assistance or phone transfers.",
-            "input_schema": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}
-        },
-        {
-            "name": "connect_to_live_chat_HMRC_pensions_forms_and_returns",
-            "description": "Call for HMRC pensions/forms human assistance or phone transfers.",
-            "input_schema": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}
         }
-    ]
+    }]
 
-    if strategy == 1: return [oj_tool]
-    if strategy == 2: return [govuk_tool]
-    if strategy == 4: return [oj_tool] + live_chat_tools
-    return [oj_tool, govuk_tool] # Default strategy 3
+def get_govuk_definitions() -> List[Dict[str, Any]]:
+    return [{
+        "name": "query_govuk_kb",
+        "description": "Search public GOV.UK policy and legislation.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        }
+    }]
+
+def get_live_chat_definitions() -> List[Dict[str, Any]]:
+    """Returns schemas for all three live chat endpoints."""
+    tools_list = []
+    names = [
+        ("MOJ", "Ministry of Justice"),
+        ("immigration", "Immigration and visas"),
+        ("HMRC_pensions_forms_and_returns", "HMRC pensions and returns")
+    ]
+    for short, full in names:
+        tools_list.append({
+            "name": f"connect_to_live_chat_{short}",
+            "description": f"Connect to a live agent for {full} queries.",
+            "input_schema": {
+                "type": "object",
+                "properties": {"reason": {"type": "string", "description": "Handoff reason"}},
+                "required": ["reason"],
+            }
+        })
+    return tools_list
