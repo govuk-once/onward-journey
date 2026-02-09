@@ -59,13 +59,8 @@ def load_test_queries(file_path: str) -> list[dict]:
     return test_cases
 
 def save_test_results(
-<<<<<<< HEAD
     cm_df        : pd.DataFrame,
     fig          : plt.Figure,
-=======
-    cm_df        : pd.DataFrame, 
-    fig          : plt.Figure, 
->>>>>>> 39f231e (added file suffix for unique file naming)
     output_dir   : str = "test_output/prototype2",
     file_suffix  : str = "",
 ) -> None:
@@ -73,7 +68,6 @@ def save_test_results(
     
     os.makedirs(output_dir, exist_ok=True)
     cm_df.to_csv(os.path.join(output_dir, f"confusion_matrix_uid{file_suffix}.csv"))
-<<<<<<< HEAD
 
     plot_file_path = os.path.join(output_dir, f"confusion_matrix_plot{file_suffix}.png")
     fig.savefig(plot_file_path)
@@ -81,12 +75,3 @@ def save_test_results(
     plt.close(fig)
 
     return
-=======
-    
-    plot_file_path = os.path.join(output_dir, f"confusion_matrix_plot{file_suffix}.png")
-    fig.savefig(plot_file_path) 
-    
-    plt.close(fig) 
-    
-    return
->>>>>>> 39f231e (added file suffix for unique file naming)
