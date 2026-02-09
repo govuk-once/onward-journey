@@ -26,9 +26,7 @@ vs = vectorStore(file_path=KB_PATH)
 agent = OnwardJourneyAgent(
     handoff_package=example_handoff_pension_schemes_nohelp(),
     vector_store_embeddings=vs.get_embeddings(),
-    vector_store_chunks=vs.get_chunks(),
-    strategy=4 
-)
+    vector_store_chunks=vs.get_chunks())
 
 # Overriding system instruction for better visual structure
 agent.system_instruction += (
