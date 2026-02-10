@@ -34,6 +34,12 @@ agent.system_instruction += (
     "and bullet points for lists of contact details to ensure readability."
 )
 
+# Overriding system instruction for better visual structure
+agent.system_instruction += (
+    "\n\nCRITICAL: Use Markdown formatting. Use ### for headers, **bold** for phone numbers, "
+    "and bullet points for lists of contact details to ensure readability."
+)
+
 class ChatRequest(BaseModel):
     message: str
 
