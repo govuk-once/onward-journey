@@ -11,7 +11,6 @@ from copy import deepcopy
 
 from helpers                  import SearchResult
 
-
 import asyncio
 import tools
 
@@ -98,6 +97,42 @@ class HandOffMixin:
         )
         return await self._send_message_and_tools(initial_prompt)
 
+class RunConversationMixin:
+    def run_conversation(self) -> None:
+            """
+            Interactive terminal loop that mirrors the original functionality
+            but uses the new unified multi-tool logic.
+            """
+            # Display the specialized agent's first response
+            print("\n" + "-" * 100)
+            print("You are now speaking with the Onward Journey Agent.")
+            #print(f"Onward Journey Agent: {first_response}")
+            print("-" * 100 + "\n")
+
+            # Handle handoff if history exists
+            if self.handoff_package.get('final_conversation_history'):
+                print("Processing context from previous agent...")
+                initial_response = self.process_handoff()
+                print(f"\nAgent: {initial_response}\n")
+
+            # Standard interactive loop
+            while True:
+                try:
+                    user_input = input("You: ").strip()
+
+                    if user_input.lower() in ["exit", "quit", "end"]:
+                        print("\n👋 Conversation with Onward Journey Agent ended.")
+                        break
+
+                    if not user_input:
+                        continue
+
+                    response = self._send_message_and_tools(user_input)
+                    print(f"\n Onward Journey Agent: {response}\n")
+
+                except KeyboardInterrupt:
+                    break
+
 class BaseAgent:
     def __init__(self, model_name: str, aws_region: str, temperature: float = 0.0):
 
@@ -179,7 +214,54 @@ class BaseAgent:
 
                     return f"{final_text}\n\n{handoff_signal}"
 
-class GovUKAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, GovUKSearchMixin):
+class overseeAgent(BaseAgent, HandOffMixin, RunConversationMixin):
+    def __init__(self, oj_agent: OnwardJourneyAgent, gov_agent: GovUKAgent,
+                 model_name: str, aws_region: str, temperature: float = 0.0):
+        super().__init__(model_name, aws_region, temperature)
+        self.oj_agent = oj_agent
+        self.gov_agent = gov_agent
+
+        # Define tools that call the specialist agents
+        self.available_tools = {
+            "query_onward_journey_expert": self.delegate_to_oj,
+            "query_govuk_public_expert": self.delegate_to_gov
+        }
+
+        # Simplified tool definitions for Bedrock
+        self.bedrock_tools = [
+            {
+                "toolSpec": {
+                    "name": "query_onward_journey_expert",
+                    "description": "Consult for internal data, phone numbers, or live chat transfers.",
+                    "inputSchema": {"json": {"type": "object", "properties": {"query": {"type": "string"}}}}
+                }
+            },
+            {
+                "toolSpec": {
+                    "name": "query_govuk_public_expert",
+                    "description": "Consult for general public GOV.UK information and policy search.",
+                    "inputSchema": {"json": {"type": "object", "properties": {"query": {"type": "string"}}}}
+                }
+            }
+        ]
+
+        self.system_instruction = (
+            "You are the Supervisor. Your role is to coordinate experts.\n"
+            "1. Use 'query_onward_journey_expert' for specific contact details, phone numbers, or connecting to live agents.\n"
+            "2. Use 'query_govuk_public_expert' for general guidance, policy, or public-facing documentation.\n"
+            "If a query is complex, you may call both experts sequentially to provide a comprehensive answer."
+        )
+
+    async def delegate_to_oj(self, query: str) -> str:
+        """Calls the Onward Journey Agent's processing loop."""
+        return await self.oj_agent._send_message_and_tools(query)
+
+    async def delegate_to_gov(self, query: str) -> str:
+        """Calls the GOV.UK Agent's processing loop."""
+        return await self.gov_agent._send_message_and_tools(query)
+
+
+class GovUKAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, GovUKSearchMixin, RunConversationMixin):
     def __init__(self, handoff_package: dict,
                  embedding_model:str = "amazon.titan-embed-text-v2:0",
                  model_name: str = "anthropic.claude-3-7-sonnet-20250219-v1:0",
@@ -206,7 +288,7 @@ class GovUKAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, GovUKSearchMixin)
         }
         self.bedrock_tools = tools.get_govuk_definitions()
 
-class OnwardJourneyAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchMixin, LiveChatMixin):
+class OnwardJourneyAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchMixin, LiveChatMixin, RunConversationMixin):
     def __init__(self,
                  handoff_package: dict,
                  vector_store_embeddings: np.ndarray,
