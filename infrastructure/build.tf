@@ -36,68 +36,6 @@ data "archive_file" "rds_seeder_zip" {
 }
 
 
-# TODO: If new version of Orchestrator Lambda build works, remove old version that re-installed every package after a small code change
-
-# ## LAMBDA BUILD: ORCHESTRATOR
-# # Prepares a Linux-compatible deployment package by bundling code and binary dependencies into a single ZIP.
-
-# # Prunes uv.lock to get only Orchestrator-specific deps and packages them.
-# resource "null_resource" "install_orchestrator_deps" {
-#   triggers = {
-#     # Re-run if the python logic, dependency lockfile, or this build script changes
-#     python_code  = filemd5("${path.module}/../app/orchestrator.py")
-#     lock_file    = filemd5("${path.module}/../app/uv.lock")
-#     build_script = sha1(local.orchestrator_build_command)
-#   }
-
-#   provisioner "local-exec" {
-#     command = local.orchestrator_build_command
-#   }
-# }
-
-# locals {
-#   orchestrator_build_command = <<EOT
-#     # 1. Clean and enter app directory
-#     rm -rf ${path.module}/../dist/orchestrator_staging
-#     mkdir -p ${path.module}/../dist/orchestrator_staging
-#     cd ${path.module}/../app
-
-#     # 2. COMPILE for the exact Lambda architecture
-#     # Use --python-platform for the resolver
-#     uv pip compile pyproject.toml \
-#       --python-platform x86_64-manylinux_2_28 \
-#       --python-version 3.12 \
-#       --output-file requirements_lambda.txt
-
-#     # 3. INSTALL with strict platform enforcement
-#     # FIX: Changed --platform to --python-platform
-#     # Added --link-mode copy to ensure we get real files, not Mac symlinks
-#     uv pip install \
-#       --target ../dist/orchestrator_staging \
-#       --python-platform x86_64-manylinux_2_28 \
-#       --python-version 3.12 \
-#       --only-binary=:all: \
-#       --link-mode copy \
-#       --no-cache \
-#       -r requirements_lambda.txt
-
-#     # 4. Copy logic and cleanup
-#     cp orchestrator.py ../dist/orchestrator_staging/
-#     [ -f requirements_lambda.txt ] && rm requirements_lambda.txt
-#   EOT
-# }
-
-
-# data "archive_file" "orchestrator_zip" {
-#   type        = "zip"
-#   source_dir  = "${path.module}/../dist/orchestrator_staging"
-#   output_path = "${path.module}/../dist/orchestrator_payload.zip"
-
-#   depends_on = [
-#     null_resource.install_orchestrator_deps
-#   ]
-# }
-
 ## LAMBDA BUILD: ORCHESTRATOR
 # Prepares a Linux-compatible deployment package by bundling code and binary dependencies.
 
@@ -175,7 +113,7 @@ data "archive_file" "orchestrator_zip" {
 }
 
 ## LAMBDA BUILD: RDS TOOL (MCP SERVER)
-# Bundles the database search tool with binary dependencies for the Gateway.
+# Bundles the database search tool with the pure-python pg8000 driver for the Gateway.
 
 resource "null_resource" "install_rds_tool_deps" {
   triggers = {
@@ -185,12 +123,21 @@ resource "null_resource" "install_rds_tool_deps" {
   }
 
   provisioner "local-exec" {
-    # 1. Clean staging | 2. Install Linux binaries | 3. Copy logic
+    # 1. Clean staging
+    # 2. Install pg8000 (Pure Python, but we force platform for consistency)
+    # 3. Copy the updated rds_tool.py
     command = <<EOT
       rm -rf ${path.module}/../dist/rds_tool_staging
       mkdir -p ${path.module}/../dist/rds_tool_staging
       cd ${path.module}/../app
-      uv pip install --target ../dist/rds_tool_staging --platform manylinux_2_28_x86_64 --only-binary=:all: -- psycopg2-binary
+
+      uv pip install \
+        --target ../dist/rds_tool_staging \
+        --python-platform x86_64-manylinux_2_28 \
+        --python-version 3.12 \
+        --no-cache \
+        pg8000
+
       cp rds_tool.py ../dist/rds_tool_staging/
     EOT
   }
