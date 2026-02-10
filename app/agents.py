@@ -137,6 +137,7 @@ class BaseAgent:
     def __init__(self, model_name: str, aws_region: str, temperature: float = 0.0):
 
             self.client = boto3.client(service_name="bedrock-runtime", region_name=aws_region)
+            self.aws_region = aws_region
             self.model_name = model_name
             self.temperature = temperature
             self.history: List[Dict[str, Any]] = []
@@ -213,53 +214,6 @@ class BaseAgent:
                     final_text = next((c['text'] for c in final_resp_body.get('content', []) if c['type'] == 'text'), "Transferring...")
 
                     return f"{final_text}\n\n{handoff_signal}"
-
-class overseeAgent(BaseAgent, HandOffMixin, RunConversationMixin):
-    def __init__(self, oj_agent: OnwardJourneyAgent, gov_agent: GovUKAgent,
-                 model_name: str, aws_region: str, temperature: float = 0.0):
-        super().__init__(model_name, aws_region, temperature)
-        self.oj_agent = oj_agent
-        self.gov_agent = gov_agent
-
-        # Define tools that call the specialist agents
-        self.available_tools = {
-            "query_onward_journey_expert": self.delegate_to_oj,
-            "query_govuk_public_expert": self.delegate_to_gov
-        }
-
-        # Simplified tool definitions for Bedrock
-        self.bedrock_tools = [
-            {
-                "toolSpec": {
-                    "name": "query_onward_journey_expert",
-                    "description": "Consult for internal data, phone numbers, or live chat transfers.",
-                    "inputSchema": {"json": {"type": "object", "properties": {"query": {"type": "string"}}}}
-                }
-            },
-            {
-                "toolSpec": {
-                    "name": "query_govuk_public_expert",
-                    "description": "Consult for general public GOV.UK information and policy search.",
-                    "inputSchema": {"json": {"type": "object", "properties": {"query": {"type": "string"}}}}
-                }
-            }
-        ]
-
-        self.system_instruction = (
-            "You are the Supervisor. Your role is to coordinate experts.\n"
-            "1. Use 'query_onward_journey_expert' for specific contact details, phone numbers, or connecting to live agents.\n"
-            "2. Use 'query_govuk_public_expert' for general guidance, policy, or public-facing documentation.\n"
-            "If a query is complex, you may call both experts sequentially to provide a comprehensive answer."
-        )
-
-    async def delegate_to_oj(self, query: str) -> str:
-        """Calls the Onward Journey Agent's processing loop."""
-        return await self.oj_agent._send_message_and_tools(query)
-
-    async def delegate_to_gov(self, query: str) -> str:
-        """Calls the GOV.UK Agent's processing loop."""
-        return await self.gov_agent._send_message_and_tools(query)
-
 
 class GovUKAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, GovUKSearchMixin, RunConversationMixin):
     def __init__(self, handoff_package: dict,
@@ -361,37 +315,37 @@ class OnwardJourneyAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchM
 
         self.bedrock_tools = (tools.get_internal_kb_definition() + tools.get_live_chat_definitions())
 
-    def run_conversation(self) -> None:
-            """
-            Interactive terminal loop that mirrors the original functionality
-            but uses the new unified multi-tool logic.
-            """
-            # Display the specialized agent's first response
-            print("\n" + "-" * 100)
-            print("You are now speaking with the Onward Journey Agent.")
-            #print(f"Onward Journey Agent: {first_response}")
-            print("-" * 100 + "\n")
+class hybridAgent(OnwardJourneyAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchMixin, GovUKSearchMixin, LiveChatMixin, RunConversationMixin):
+    def __init__(self,
+                 handoff_package: dict,
+                 vector_store_embeddings: np.ndarray,
+                 vector_store_chunks: list[str],
+                 embedding_model:str = "amazon.titan-embed-text-v2:0",
+                 model_name: str = "anthropic.claude-3-7-sonnet-20250219-v1:0",
+                 aws_region: str = 'eu-west-2',
+                 temperature: float = 0.0,
+                 top_K_OJ: int = 3,
+                 top_K_govuk: int = 3,
+                 verbose: bool = False):
 
-            # Handle handoff if history exists
-            if self.handoff_package.get('final_conversation_history'):
-                print("Processing context from previous agent...")
-                initial_response = self.process_handoff()
-                print(f"\nAgent: {initial_response}\n")
+        super().__init__(handoff_package, vector_store_embeddings, vector_store_chunks, embedding_model, model_name, aws_region, temperature, top_K_OJ)
 
-            # Standard interactive loop
-            while True:
-                try:
-                    user_input = input("You: ").strip()
+        self.handoff_package = handoff_package
 
-                    if user_input.lower() in ["exit", "quit", "end"]:
-                        print("\n👋 Conversation with Onward Journey Agent ended.")
-                        break
+        self.embedding_model =embedding_model
+        self.top_K_OJ        = top_K_OJ
+        self.top_K_govuk     = top_K_govuk
 
-                    if not user_input:
-                        continue
+        self._tool_declarations()
+    def _tool_declarations(self):
+        """Maps Bedrock tool names to Python functions based on strategy."""
 
-                    response = self._send_message_and_tools(user_input)
-                    print(f"\n Onward Journey Agent: {response}\n")
+        # Internal RAG logic stays in Agent to access local embeddings
+        self.available_tools = {
+            "query_internal_kb": self.query_internal_kb,
+            "query_govuk_kb": self.query_govuk_kb,
+        }
 
-                except KeyboardInterrupt:
-                    break
+        self.available_tools = self.available_tools | self._get_live_chat_registry()
+
+        self.bedrock_tools = tools.get_internal_kb_definition() + tools.get_govuk_definitions() + tools.get_live_chat_definitions()
