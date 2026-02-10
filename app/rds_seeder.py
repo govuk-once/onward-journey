@@ -12,9 +12,15 @@ import boto3
 import pg8000.native
 
 
+SECRETS_URL = os.environ.get("SECRETS_ENDPOINT_URL")
+BEDROCK_URL = os.environ.get("BEDROCK_RUNTIME_ENDPOINT")
+
+
 def get_db_password():
     """Retrieves the DB password from Secrets Manager using the ARN."""
-    client = boto3.client("secretsmanager")
+    client = boto3.client(
+        "secretsmanager", region_name="eu-west-2", endpoint_url=f"https://{SECRETS_URL}"
+    )
     response = client.get_secret_value(SecretId=os.environ["DB_SECRET_ARN"])
     return response["SecretString"]
 
@@ -54,7 +60,11 @@ def lambda_handler(event, context):
 
     # Initialise service clients
     s3 = boto3.client("s3")
-    bedrock = boto3.client("bedrock-runtime")
+    bedrock = boto3.client(
+        "bedrock-runtime",
+        region_name="eu-west-2",
+        endpoint_url=f"https://{BEDROCK_URL}",
+    )
 
     # Establish database connection using environment variables
     print(f"Connecting to {os.environ['DB_HOST']}...")

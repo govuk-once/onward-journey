@@ -39,7 +39,7 @@ tables:
       tags: "TEXT"
       description: "TEXT"
       phone_number: "TEXT"
-      genesys_queue_id: "TEXT"
+      live_chat_identifier: "TEXT"
       embedding: "VECTOR(1024)"
     embedding_source_cols:
       [

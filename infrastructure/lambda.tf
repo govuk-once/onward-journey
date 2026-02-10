@@ -21,12 +21,14 @@ resource "aws_lambda_function" "rds_seeder" {
 
   environment {
     variables = {
-      DB_CONFIG     = jsonencode(local.seed_config)
-      DB_HOST       = aws_db_instance.dept_contacts_metadata.address
-      DB_NAME       = aws_db_instance.dept_contacts_metadata.db_name
-      DB_USER       = aws_db_instance.dept_contacts_metadata.username
-      DB_SECRET_ARN = data.aws_secretsmanager_secret_version.dept_contacts_db_password.arn
-      BUCKET_NAME   = aws_s3_bucket.dataset_storage.id
+      DB_CONFIG                = jsonencode(local.seed_config)
+      DB_HOST                  = aws_db_instance.dept_contacts_metadata.address
+      DB_NAME                  = aws_db_instance.dept_contacts_metadata.db_name
+      DB_USER                  = aws_db_instance.dept_contacts_metadata.username
+      DB_SECRET_ARN            = data.aws_secretsmanager_secret_version.dept_contacts_db_password.arn
+      SECRETS_ENDPOINT_URL     = aws_vpc_endpoint.secrets.dns_entry[0]["dns_name"]
+      BEDROCK_RUNTIME_ENDPOINT = aws_vpc_endpoint.bedrock.dns_entry[0]["dns_name"]
+      BUCKET_NAME              = aws_s3_bucket.dataset_storage.id
     }
   }
 
@@ -100,10 +102,12 @@ resource "aws_lambda_function" "rds_tool" {
 
   environment {
     variables = {
-      DB_HOST       = aws_db_instance.dept_contacts_metadata.address
-      DB_NAME       = aws_db_instance.dept_contacts_metadata.db_name
-      DB_USER       = aws_db_instance.dept_contacts_metadata.username
-      DB_SECRET_ARN = data.aws_secretsmanager_secret_version.dept_contacts_db_password.arn
+      DB_HOST                  = aws_db_instance.dept_contacts_metadata.address
+      DB_NAME                  = aws_db_instance.dept_contacts_metadata.db_name
+      DB_USER                  = aws_db_instance.dept_contacts_metadata.username
+      DB_SECRET_ARN            = data.aws_secretsmanager_secret_version.dept_contacts_db_password.arn
+      SECRETS_ENDPOINT_URL     = aws_vpc_endpoint.secrets.dns_entry[0]["dns_name"]
+      BEDROCK_RUNTIME_ENDPOINT = aws_vpc_endpoint.bedrock.dns_entry[0]["dns_name"]
     }
   }
 
