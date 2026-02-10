@@ -15,6 +15,7 @@ from botocore.config import Config
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 from langchain_aws import ChatBedrockConverse
+from langchain_core.messages import SystemMessage
 from langchain_core.tools import tool
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
@@ -31,6 +32,23 @@ ENDPOINT_URL = os.environ.get("AGENT_RUNTIME_ENDPOINT_URL")
 BEDROCK_RUNTIME_URL = os.environ.get("BEDROCK_RUNTIME_ENDPOINT")
 SECRETS_ENDPOINT_URL = os.environ.get("SECRETS_ENDPOINT_URL")
 AWS_REGION = "eu-west-2"
+
+SYSTEM_PROMPT = """You are a specialized GOV.UK Contact Assistant.
+Your primary duty is to provide contact details for specific government departments while filtering out irrelevant search results.
+
+STRICT FILTERING RULES:
+1. IDENTIFY: Determine exactly which government department the user is asking about (e.g., DWP, HMRC, Home Office).
+2. FILTER: When you receive tool results, look at the 'service' and 'info' fields.
+3. OMIT: If a result belongs to a DIFFERENT department than the one requested, you MUST NOT list its details.
+4. TRIAGE CONTACT METHODS:
+   - If a valid 'live_chat_identifier' is present for the requested service, you MUST tell the user that a live agent service is available and provide the ID.
+   - If 'live_chat_identifier' is missing, null, or empty, provide the 'phone_number' as the primary contact method instead.
+5. EXCEPTION: If NO results match the requested department, inform the user you couldn't find a direct match but mention the closest government service available.
+
+STRICT FORMATTING RULES:
+1. Start your response immediately with the department details or a helpful opening sentence.
+2. Use Markdown (## for headers, * for bullets).
+"""
 
 
 def check_connection(host, port):
@@ -149,7 +167,7 @@ def query_department_database(query: str, config: RunnableConfig):
     if content and "text" in content[0]:
         return content[0]["text"]
 
-    return str(result_data)
+    return "ERROR: No matching records found in the department database."
 
 
 # Bind the tools to the LLM
@@ -159,7 +177,20 @@ llm_with_tools = llm.bind_tools(tools)
 
 def chatbot(state: State):
     """Primary reasoning node for the agent that uses the bound tools."""
-    return {"messages": [llm_with_tools.invoke(state["messages"])]}
+    sys_msg = SystemMessage(content=SYSTEM_PROMPT)
+
+    # Filter out any existing system messages to prevent 'System Bloat' and ensure the instruction is always at index 0.
+    filtered_messages = [
+        msg for msg in state["messages"] if not isinstance(msg, SystemMessage)
+    ]
+
+    # Construct the final list for this specific invocation
+    call_history = [sys_msg] + filtered_messages
+
+    # Invoke the model
+    response = llm_with_tools.invoke(call_history)
+
+    return {"messages": [response]}
 
 
 # Build the Graph
@@ -242,15 +273,19 @@ def lambda_handler(event, context):
         ):
             if chunk.content:
                 print(f"Received chunk from node: {metadata.get('langgraph_node')}")
-                # If content is a list (common with Claude 4.5/3.5 content blocks), we need to extract the text.
-                if isinstance(chunk.content, list):
-                    for block in chunk.content:
-                        if isinstance(block, dict) and block.get("type") == "text":
-                            yield block.get("text", "")
-                        elif isinstance(block, str):
-                            yield block
-                else:
-                    yield chunk.content
+                # Only yield if the chunk comes from the 'chatbot' node
+                if metadata.get("langgraph_node") == "chatbot":
+                    # If content is a list (common with Claude 4.5/3.5 content blocks), we need to extract the text.
+                    if chunk.content:
+                        if isinstance(chunk.content, list):
+                            for block in chunk.content:
+                                if (
+                                    isinstance(block, dict)
+                                    and block.get("type") == "text"
+                                ):
+                                    yield block.get("text", "")
+                        else:
+                            yield chunk.content
 
     # --- TEST CODE ---
     # Currently used for Function URL compatibility without streaming enabled.
