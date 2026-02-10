@@ -63,6 +63,8 @@ resource "aws_lambda_function" "orchestrator" {
       AGENT_RUNTIME_ENDPOINT_URL = aws_vpc_endpoint.bedrock_agentcore.dns_entry[0]["dns_name"]
       # URL for Claude (Inference)
       BEDROCK_RUNTIME_ENDPOINT = aws_vpc_endpoint.bedrock.dns_entry[0]["dns_name"]
+      # URL for Secrets Manager
+      SECRETS_ENDPOINT_URL = aws_vpc_endpoint.secrets.dns_entry[0]["dns_name"]
       # Specific DNS for the Gateway Endpoint
       GATEWAY_ENDPOINT_URL = aws_vpc_endpoint.bedrock_gateway.dns_entry[0]["dns_name"]
       GATEWAY_URL          = "https://${aws_bedrockagentcore_gateway.tool_interface.gateway_id}.gateway.bedrock-agentcore.${var.aws_region}.amazonaws.com/mcp"

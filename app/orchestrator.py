@@ -29,6 +29,7 @@ MEMORY_ID = os.environ.get("MEMORY_ID")
 # TODO: Make naming of endpoint URLs consistent
 ENDPOINT_URL = os.environ.get("AGENT_RUNTIME_ENDPOINT_URL")
 BEDROCK_RUNTIME_URL = os.environ.get("BEDROCK_RUNTIME_ENDPOINT")
+SECRETS_ENDPOINT_URL = os.environ.get("SECRETS_ENDPOINT_URL")
 AWS_REGION = "eu-west-2"
 
 
@@ -228,9 +229,9 @@ def lambda_handler(event, context):
     config = {"configurable": {"thread_id": thread_id, "actor_id": actor_id}}
 
     # Network Checks
-    check_connection(f"bedrock-runtime.{os.environ['AWS_REGION']}.amazonaws.com", 443)
     check_connection(ENDPOINT_URL, 443)
     check_connection(BEDROCK_RUNTIME_URL, 443)
+    check_connection(SECRETS_ENDPOINT_URL, 443)
 
     def generate_stream():
         """Generator for real-time LangGraph message streaming."""
