@@ -5,6 +5,8 @@ export interface ConversationMessageProps {
   user?: string;
   image?: string;
   isSelf: boolean;
+  timestamp?: string;
+  agentId?: string;
 }
 
 export type ListableConversationMessageProps = ConversationMessageProps &

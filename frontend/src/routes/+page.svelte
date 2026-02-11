@@ -2,42 +2,14 @@
   import { v7 as uuid } from "uuid";
   import QuestionForm from "$lib/components/QuestionForm.svelte";
   import SvelteMarkdown from "svelte-markdown";
-  // --- Interfaces ---
-  interface GenesysHandoff {
-    action: string;
-    deploymentId: string;
-    region: string;
-    token: string;
-    reason: string; 
-  }
+  import type { ListableConversationMessageProps } from "$lib/types/ConversationMessage";
+  import type LiveChatHandoff from "$lib/types/LiveChatHandoff";
 
-  interface Message {
-    id: string;
-    user: string;
-    message: string;
-    isSelf: boolean;
-    timestamp?: string;
-    agentId?: string;
-  }
-  
-
-  interface Message {
-    id: string;
-    user: string;
-    message: string;
-    isSelf: boolean;
-    timestamp?: string;
-    agentId?: string;
-  }
-
-
+  let { data }: { data: { messages?: ListableConversationMessageProps[] } } = $props();
 
   // --- State ---
   let scrollContainer: HTMLElement | undefined = $state();
-
-let { data }: { data: { messages?: Message[] } } = $props();
-let chatMessages = $state<Message[]>(data.messages ?? []);
-
+  let chatMessages = $state<ListableConversationMessageProps[]>(data.messages ?? []);
   let isLoading = $state(false);
   let isLiveChat = $state(false);
   let socket: WebSocket | null = $state(null);
@@ -47,10 +19,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
   let handoffPackage = $state({
       final_conversation_history: [
         { role: "user", content: [{ type: "text", text: "I'm trying to find the line for Pension Schemes." }] },
-        { role: "assistant", content: [{ type: "text", text: "I don't have the specific phone number for HMRC Pension Schemes Services in the guidance provided.The guidance shows that you \
-    'can contact HMRC Pension Schemes Services by: using the online contact form writing to: Pension Schemes Services, HM Revenue and Customs, \
-    'BX9 1GH, United Kingdom. You can find phone contact details for other HMRC services on the Contact HMRC page. GOV.UK Chat can make mistakes. \
-    'Check GOV.UK pages for important information. GOV.UK pages used in this answer (links open in a new tab)'" }] },
+        { role: "assistant", content: [{ type: "text", text: "I don't have the specific phone number for HMRC Pension Schemes Services in the guidance provided. The guidance shows that you can contact HMRC Pension Schemes Services by: using the online contact form writing to: Pension Schemes Services, HM Revenue and Customs, BX9 1GH, United Kingdom. You can find phone contact details for other HMRC services on the Contact HMRC page. GOV.UK Chat can make mistakes. Check GOV.UK pages for important information. GOV.UK pages used in this answer (links open in a new tab)" }] }
       ]
     });
 
@@ -72,8 +41,8 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
 
   async function returnToAIAgent() {
     const transcript = chatMessages
-      .filter( (m: Message) => (m.user === "Live Agent" || m.user === "You") && m.message)
-      .map( (m: Message) => ({
+      .filter( (m) => (m.user === "Live Agent" || m.user === "You") && m.message)
+      .map( (m) => ({
         role: m.user === "You" ? "user" : "assistant",
         text: m.message
       }));
@@ -130,7 +99,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
     }
   }
 
-  function setupGenesysSocket(config: GenesysHandoff) {
+  function setupGenesysSocket(config: LiveChatHandoff) {
     if (socket) {
       socket.onopen = null;
       socket.onmessage = null;
@@ -156,7 +125,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
       const data = JSON.parse(event.data);
       if (data.class === "SessionResponse" && data.code === 200) {
           const currentSessionHistory = chatMessages
-            .map((m: Message) => {
+            .map((m) => {
               const time = m.timestamp ? `[${m.timestamp}] ` : "";
               const agentId = m.agentId ? ` (Agent: ${m.agentId})` : "";
               return `${time}${m.user}${agentId}: ${m.message}`;
@@ -228,7 +197,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
       if (responseText?.includes("initiate_live_handoff")) {
         const jsonStart = responseText.indexOf('{');
         const jsonEnd = responseText.lastIndexOf('}') + 1;
-        const config: GenesysHandoff = JSON.parse(responseText.substring(jsonStart, jsonEnd));
+        const config: LiveChatHandoff = JSON.parse(responseText.substring(jsonStart, jsonEnd));
         chatMessages = [...chatMessages, { message: "Transferring to a live agent...", user: "System", isSelf: false, id: uuid() }];
         setupGenesysSocket(config);
       } else {
