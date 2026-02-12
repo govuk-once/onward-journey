@@ -30,7 +30,7 @@ Follow these steps to set up and run the project locally.
 - Make sure you have the repository pre-requisites from [the root README](../README.MD) installed.
 - **AWS Account** with configured **IAM credentials** (via CLI or environment variables).
 - Model Access Granted for the desired Claude model (e.g., Claude 3.7 Sonnet) in your target AWS region.
-- Environment: A .env file required in the app directory to store API credentials and service URLs. 
+- Environment: A .env file required in the app directory to store API credentials and service URLs.
 
 ### 2. .env Configuration
 Ensure your .env file contains the following variables for OpenSearch and Genesys Cloud integration:
@@ -85,7 +85,7 @@ Use this to run the agent against a suite of pre-defined queries and generate th
 
 ```shell
 gds-cli aws once-onwardjourney-development-admin -- uv run main.py test \
-    --output_dir path/to/output \ 
+    --output_dir path/to/output \
     --test_data ./ \
 uv run main.py test \
     --kb_path ../mock_data/mock_rag_data.csv \
@@ -102,9 +102,9 @@ gds-cli aws once-onwardjourney-development-admin -- uv run uvicorn chat_server:a
 ```
 In the second, navigate to the "frontend" folder and run:
 ```shell
-npm run dev 
+npm run dev
 ```
-Once these have been run and are hosted, go to a browser and go to http://localhost:6173/ . There you can interact with the Onward Journey Agent as a user. 
+Once these have been run and are hosted, go to a browser and go to http://localhost:6173/ . There you can interact with the Onward Journey Agent as a user.
 
 #### Key Components and AWS Integration
 

@@ -7,8 +7,6 @@ from typing import List
 
 def df_to_text_chunks(df):
     """Converts a DataFrame into text chunks for embedding and retrieval."""
-def df_to_text_chunks(df):
-    """Converts a DataFrame into text chunks for embedding and retrieval."""
     chunks = []
     for _, row in df.iterrows():
         chunk = (f"The unique id is {row['uid']}. The service name is {row['service_name']}. "

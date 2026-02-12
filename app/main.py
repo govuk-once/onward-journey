@@ -2,9 +2,10 @@ import random
 import numpy as np
 import argparse
 import os  # Required for directory management
+import asyncio
 
 from data                        import vectorStore
-from agents                      import OnwardJourneyAgent
+from agents                      import OnwardJourneyAgent, GovUKAgent, hybridAgent
 from loaders                     import load_test_queries
 from metrics                     import clarification_success_gain_metric
 
@@ -19,7 +20,7 @@ def default_handoff():
 class AgentRunner:
     def __init__(self, llm_model_id: str, path_to_kb: str, path_to_test_data: str,
                  aws_region: str, aws_role_arn : str, output_dir: str,
-                 seed: int = 0, vector_store_model_id: str = 'amazon.titan-embed-text-v2:0'):
+                 seed: int = 0, agent_type:int = 0, vector_store_model_id: str = 'amazon.titan-embed-text-v2:0'):
 
         self.model_id                  = llm_model_id
         self.vector_store_model_id     = vector_store_model_id
@@ -28,25 +29,27 @@ class AgentRunner:
         self.aws_role_arn              = aws_role_arn
         self.path_to_test_data         = path_to_test_data
         self.seed                      = seed
+        self.agent_type                = agent_type
         self.output_dir                = output_dir
 
         self._set_all_seeds(self.seed)
 
-    def __call__(self, run_mode: str, handoff_data: dict, top_k_oj: int, top_k_govuk: int):
+    def __call__(self, run_mode: str, handoff_data: dict, top_k_oj: int = 0, top_k_govuk: int = 0):
         """
         Executes the agent with specific Top-K weightings and saves results
         to a unique sub-folder.
         """
         vs = self._initialize_vector_store()
 
-        # Initialize agent with the specific K-pair
-        oj_agent = self._initialize_agent(
-            vs=vs,
-            handoff_data=handoff_data,
-            temperature=0.0,
-            top_k_oj=top_k_oj,
-            top_k_govuk=top_k_govuk
-        )
+        if self.agent_type == 0:
+            print("Initializing OnwardJourneyAgent...")
+            agent = self._initialize_onward_journey_agent(vs, handoff_data, temperature=0.0, top_k_oj=top_k_oj)
+        elif self.agent_type == 1:
+            print("Initializing GovUKAgent...")
+            agent = self._initialize_govuk_agent(handoff_data, temperature=0.0, top_k_govuk=top_k_govuk)
+        else:
+            print("Initializing hybridAgent with both specialists...")
+            agent = self._initialize_hybrid_agent(vs, handoff_data, temperature=0.0, top_k_oj=top_k_oj, top_k_govuk=top_k_govuk)
 
         if run_mode == 'test':
             # Create a unique folder for this specific pair
@@ -58,7 +61,7 @@ class AgentRunner:
             test_queries = load_test_queries(self.path_to_test_data)
 
             # Pass the new sub-folder to the Evaluator
-            evaluator = Evaluator(oj_agent, test_queries, current_run_dir)
+            evaluator = Evaluator(agent, test_queries, current_run_dir)
 
             print(f"Running Forced Mode (K_oj={top_k_oj}, K_gov={top_k_govuk})...")
             forced_df = evaluator('forced')
@@ -71,7 +74,40 @@ class AgentRunner:
             print(f"CSG Score for {pair_folder_name}: {gain_metrics.get('clarification_success_gain_csg', 0):.4f}")
 
         elif run_mode == 'interactive':
-            oj_agent.run_conversation()
+            """
+            Interactive terminal loop that mirrors the original functionality
+            but uses the new unified multi-tool logic.
+            """
+            # Display the specialized agent's first response
+            print("\n" + "-" * 100)
+            print("You are now speaking with the Onward Journey Agent.")
+            #print(f"Onward Journey Agent: {first_response}")
+            print("-" * 100 + "\n")
+
+            # Handle handoff if history exists
+            if agent.handoff_package.get('final_conversation_history'):
+                print("Processing context from previous agent...")
+                initial_response = agent.process_handoff()
+                print(f"\nAgent: {initial_response}\n")
+
+            # Standard interactive loop
+            while True:
+                try:
+                    user_input = input("You: ").strip()
+
+                    if user_input.lower() in ["exit", "quit", "end"]:
+                        print("\n👋 Conversation with Onward Journey Agent ended.")
+                        break
+
+                    if not user_input:
+                        continue
+
+                    response = agent._send_message_and_tools(user_input)
+                    response = asyncio.run(response) if asyncio.iscoroutine(response) else response
+                    print(f"\n Onward Journey Agent: {response}\n")
+
+                except KeyboardInterrupt:
+                    break
 
     def _set_all_seeds(self, seed_value: int):
         random.seed(seed_value)
@@ -80,18 +116,37 @@ class AgentRunner:
     def _initialize_vector_store(self):
         return vectorStore(file_path=self.path_to_knowledge_base)
 
-    def _initialize_agent(self, vs: vectorStore, handoff_data: dict, temperature: float,
-                          top_k_oj: int, top_k_govuk: int) -> OnwardJourneyAgent:
+    def _initialize_onward_journey_agent(self, vs: vectorStore, handoff_data: dict, temperature: float, top_k_oj: int):
         return OnwardJourneyAgent(
-                   handoff_package=handoff_data,
-                   vector_store_embeddings=vs.get_embeddings(),
-                   vector_store_chunks=vs.get_chunks(),
-                   embedding_model=self.vector_store_model_id,
-                   model_name=self.model_id,
-                   aws_region=self.aws_region,
-                   temperature=temperature,
-                   top_K_OJ=top_k_oj,
-                   top_K_govuk=top_k_govuk)
+            handoff_package=handoff_data,
+            vector_store_embeddings=vs.get_embeddings(),
+            vector_store_chunks=vs.get_chunks(),
+            model_name=self.model_id,
+            aws_region=self.aws_region,
+            temperature=temperature,
+            top_K_OJ=top_k_oj
+        )
+    def _initialize_govuk_agent(self, handoff_data: dict, temperature: float, top_k_govuk: int):
+        return GovUKAgent(
+            handoff_package=handoff_data,
+            model_name=self.model_id,
+            aws_region=self.aws_region,
+            temperature=temperature,
+            top_K_govuk=top_k_govuk
+        )
+
+    def _initialize_hybrid_agent(self, vs: vectorStore, handoff_data: dict, temperature: float,  top_k_oj: int, top_k_govuk: int):
+        return hybridAgent(
+            handoff_package=handoff_data,
+            vector_store_embeddings=vs.get_embeddings(),
+            vector_store_chunks=vs.get_chunks(),
+            embedding_model=self.vector_store_model_id,
+            model_name=self.model_id,
+            aws_region=self.aws_region,
+            temperature=temperature,
+            top_K_OJ=top_k_oj,
+            top_K_govuk=top_k_govuk
+        )
 
 def get_args(parser):
     # Required argument for mode
@@ -109,11 +164,7 @@ def get_args(parser):
     # Optional argument for overriding the AWS region
     parser.add_argument('--region', type=str, default="eu-west-2",
                         help=f'AWS region to use for the Bedrock client (default: eu-west-2).')
-    parser.add_argument('--region', type=str, default="eu-west-2",
-                        help=f'AWS region to use for the Bedrock client (default: eu-west-2).')
-
     parser.add_argument('--output_dir', type=str, help='Directory to save test outputs.')
-
     parser.add_argument('--role_arn', type=str, default=None, help='AWS Role ARN for Bedrock access (if required).')
 
     return parser.parse_args()
@@ -136,6 +187,7 @@ if __name__ == "__main__":
     if args.mode == 'test':
 
         oj_k, gov_k = 2, 5
+
 
         runner(args.mode, handoff_data=default_handoff(), top_k_oj=oj_k, top_k_govuk=gov_k)
     else:

@@ -1,7 +1,7 @@
 import pandas as pd
 import time
 
-from agents          import OnwardJourneyAgent
+from agents          import BaseAgent
 from typing          import List, Dict, Any
 from sklearn.metrics import confusion_matrix
 from helpers         import extract_and_standardize_phone, get_encoded_labels_and_mapping
@@ -9,9 +9,9 @@ from loaders         import save_test_results
 from plotting        import plot_uid_confusion_matrix
 
 class Evaluator:
-    def __init__(self, oj_agent: OnwardJourneyAgent, test_queries: List[Dict[str, Any]], output_dir: str):
+    def __init__(self, agent: BaseAgent, test_queries: List[Dict[str, Any]], output_dir: str):
 
-        self.oj_agent     = oj_agent
+        self.agent       = agent
         self.test_queries = test_queries
         self.output_dir   = output_dir
 
@@ -36,11 +36,11 @@ class Evaluator:
 
         return phone_to_topic
 
-    def _oj_agent_eval(self, query: str) -> str:
+    def _agent_eval(self, query: str) -> str:
         """
-        Sends a single query to the OnwardJourneyAgent and returns the response.
+        Sends a single query to the BaseAgent and returns the response.
         """
-        response = self.oj_agent._send_message_and_tools(query)
+        response = self.agent._send_message_and_tools(query)
         return response
     def _queries_eval(self, forced: bool) -> pd.DataFrame:
         """
@@ -48,7 +48,7 @@ class Evaluator:
         """
         results = []
         for idx, test in enumerate(self.test_queries):
-            self.oj_agent.history = []  # Reset history for each test case
+            self.agent.history = []  # Reset history for each test case
             query                 = test['query']
             try:
                 start_time = time.time()
@@ -60,17 +60,17 @@ class Evaluator:
                     # Force the agent to skip the 'Clarification Check' instruction
                     # We do this by passing a directive in the immediate user prompt
                     forced_prompt = f"INSTRUCTION: Ignore ambiguity. Use your tools immediately to answer: {query}"
-                    agent_response = self._oj_agent_eval(forced_prompt)
+                    agent_response = self._agent_eval(forced_prompt)
                 else:
                     # Turn 1: Initial Query
-                    agent_response = self._oj_agent_eval(query)
+                    agent_response = self._agent_eval(query)
                     # Turn 2: Check if simulated response is needed for ambiguous cases
                     # Note: oj_agent doesn't have 'awaiting_clarification' attribute,
                     # so we check if the response looks like a question or lacks tool output.
                     if test.get('is_ambiguous', False) and "simulated_clarification_response" in test:
                         clarification_ans = test['simulated_clarification_response']
                         # Follow up with the clarification answer
-                        agent_response = self._oj_agent_eval(clarification_ans)
+                        agent_response = self._agent_eval(clarification_ans)
 
                 end_time        = time.time()
                 extracted_phone = extract_and_standardize_phone(agent_response)
@@ -85,7 +85,7 @@ class Evaluator:
                     'is_ambiguous': test.get('is_ambiguous', False),
                     'response_time_sec': round(end_time - start_time, 2),
                     'topic': test.get('topic', 'N/A'),
-                    'conversation': self.oj_agent.history
+                    'conversation': self.agent.history
                 })
                 print(f"Case {idx+1}: {match}. Expected: {test['expected_phone_number']}, Got: {extracted_phone}")
 
