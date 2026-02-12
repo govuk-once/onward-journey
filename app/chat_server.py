@@ -28,18 +28,6 @@ agent = OnwardJourneyAgent(
     vector_store_embeddings=vs.get_embeddings(),
     vector_store_chunks=vs.get_chunks())
 
-# Overriding system instruction for better visual structure
-agent.system_instruction += (
-    "\n\nCRITICAL: Use Markdown formatting. Use ### for headers, **bold** for phone numbers, "
-    "and bullet points for lists of contact details to ensure readability."
-)
-
-# Overriding system instruction for better visual structure
-agent.system_instruction += (
-    "\n\nCRITICAL: Use Markdown formatting. Use ### for headers, **bold** for phone numbers, "
-    "and bullet points for lists of contact details to ensure readability."
-)
-
 class ChatRequest(BaseModel):
     message: str
 
