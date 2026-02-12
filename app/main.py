@@ -136,20 +136,17 @@ class AgentRunner:
         )
 
     def _initialize_hybrid_agent(self, vs: vectorStore, handoff_data: dict, temperature: float,  top_k_oj: int, top_k_govuk: int):
-            # 1. Initialize Specialists
-
-            # 2. Initialize Supervisor
-            return hybridAgent(
-                handoff_package=handoff_data,
-                vector_store_embeddings=vs.get_embeddings(),
-                vector_store_chunks=vs.get_chunks(),
-                embedding_model=self.vector_store_model_id,
-                model_name=self.model_id,
-                aws_region=self.aws_region,
-                temperature=temperature,
-                top_K_OJ=top_k_oj,
-                top_K_govuk=top_k_govuk
-            )
+        return hybridAgent(
+            handoff_package=handoff_data,
+            vector_store_embeddings=vs.get_embeddings(),
+            vector_store_chunks=vs.get_chunks(),
+            embedding_model=self.vector_store_model_id,
+            model_name=self.model_id,
+            aws_region=self.aws_region,
+            temperature=temperature,
+            top_K_OJ=top_k_oj,
+            top_K_govuk=top_k_govuk
+        )
 
 def get_args(parser):
     # Required argument for mode
