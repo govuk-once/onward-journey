@@ -73,9 +73,9 @@ resource "aws_iam_policy" "agentcore_access" {
         ]
         Resource = [
           aws_bedrockagentcore_memory.agent_chat_context.arn,
-          # 1. The Gateway itself (for management)
+          # The Gateway itself (for management)
           aws_bedrockagentcore_gateway.tool_interface.gateway_arn,
-          # 2. The Gateway sub-resources (for /runtime-endpoint/DEFAULT)
+          # The Gateway sub-resources (for /runtime-endpoint/DEFAULT)
           "${aws_bedrockagentcore_gateway.tool_interface.gateway_arn}/*",
           # Identity boundary for agent execution
           "arn:aws:bedrock:${var.aws_region}:${var.aws_account_id}:agent-alias/*"
@@ -188,10 +188,13 @@ resource "aws_iam_role_policy" "agentcore_gateway_invocation" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid      = "AllowGatewayToInvokeTools"
-        Effect   = "Allow"
-        Action   = ["lambda:InvokeFunction"]
-        Resource = [aws_lambda_function.rds_tool.arn]
+        Sid    = "AllowGatewayToInvokeTools"
+        Effect = "Allow"
+        Action = ["lambda:InvokeFunction"]
+        Resource = [
+          aws_lambda_function.rds_tool.arn,
+          aws_lambda_function.genesys_tool.arn
+        ]
       }
     ]
   })
@@ -206,6 +209,15 @@ resource "aws_lambda_permission" "allow_bedrock_gateway" {
   statement_id  = "AllowBedrockGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.rds_tool.function_name
+  principal     = "bedrock-agentcore.amazonaws.com"
+  source_arn    = aws_bedrockagentcore_gateway.tool_interface.gateway_arn
+}
+
+## BEDROCK AGENTCORE RESOURCE-BASED POLICY (GENESYS)
+resource "aws_lambda_permission" "allow_bedrock_gateway_genesys" {
+  statement_id  = "AllowBedrockGatewayInvokeGenesys"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.genesys_tool.function_name
   principal     = "bedrock-agentcore.amazonaws.com"
   source_arn    = aws_bedrockagentcore_gateway.tool_interface.gateway_arn
 }
@@ -229,7 +241,45 @@ resource "aws_iam_role_policy_attachment" "rds_tool_main" {
   policy_arn = aws_iam_policy.rds_seeder_permissions.arn
 }
 
+## GENESYS TOOL SERVICE ROLE
+# Execution role for the MCP Tool Lambda that handles Genesys API interactions.
 
+resource "aws_iam_role" "genesys_tool_role" {
+  name               = "${var.environment}-genesys-tool-role"
+  assume_role_policy = data.aws_iam_policy_document.allow_all_assume_role.json
+}
+
+resource "aws_iam_policy" "genesys_tool_permissions" {
+  name        = "${var.environment}-genesys-tool-permissions"
+  description = "Allows the Genesys Tool to fetch OAuth credentials and log to CloudWatch."
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "CloudWatchLogAccess"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Sid      = "GenesysSecretAccess"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [aws_secretsmanager_secret.genesys_credentials.arn]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "genesys_tool_main" {
+  role       = aws_iam_role.genesys_tool_role.name
+  policy_arn = aws_iam_policy.genesys_tool_permissions.arn
+}
 
 ## RDS SEEDER SERVICE ROLE
 # Execution role for the Lambda responsible for database initialisation and data loading.

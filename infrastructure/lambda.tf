@@ -114,6 +114,32 @@ resource "aws_lambda_function" "rds_tool" {
   depends_on = [aws_cloudwatch_log_group.rds_tool]
 }
 
+## TOOL LAYER: GENESYS CONTACT TOOL (MCP SERVER)
+# Configured as a "Public" Lambda (outside VPC) to allow external API access for testing.
+resource "aws_cloudwatch_log_group" "genesys_tool" {
+  name              = "/aws/lambda/${var.environment}-genesys-tool"
+  retention_in_days = 14
+}
+
+resource "aws_lambda_function" "genesys_tool" {
+  filename         = data.archive_file.genesys_tool_zip.output_path
+  source_code_hash = data.archive_file.genesys_tool_zip.output_base64sha256
+  function_name    = "${var.environment}-genesys-tool"
+  role             = aws_iam_role.genesys_tool_role.arn
+  handler          = "genesys_tool.lambda_handler"
+  runtime          = "python3.12"
+  memory_size      = 512
+  timeout          = 30
+
+  environment {
+    variables = {
+      GENESYS_SECRET_ARN = aws_secretsmanager_secret.genesys_credentials.arn
+      GENESYS_API_REGION = "mypurecloud.ie"
+    }
+  }
+
+  depends_on = [aws_cloudwatch_log_group.genesys_tool]
+}
 
 ## ORCHESTRATOR STREAMING ENDPOINT
 # Enables the RESPONSE_STREAM mode for real-time interaction with the Svelte frontend.

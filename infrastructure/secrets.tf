@@ -17,6 +17,21 @@ resource "aws_secretsmanager_secret" "dept_contacts_db_password" {
   }
 }
 
+# The Secret Value (To be populated manually in Console or via CLI for safety)
 data "aws_secretsmanager_secret_version" "dept_contacts_db_password" {
   secret_id = aws_secretsmanager_secret.dept_contacts_db_password.id
+}
+
+resource "aws_secretsmanager_secret" "genesys_credentials" {
+  name        = "${var.environment}-genesys-mcp-credentials"
+  description = "OAuth credentials for Genesys Cloud Platform API"
+}
+
+# The Secret Value (To be populated manually in Console or via CLI for safety)
+resource "aws_secretsmanager_secret_version" "genesys_credentials_val" {
+  secret_id = aws_secretsmanager_secret.genesys_credentials.id
+  secret_string = jsonencode({
+    client_id     = "GENESYS_CLIENT_ID"
+    client_secret = "GENESYS_CLIENT_SECRET"
+  })
 }
