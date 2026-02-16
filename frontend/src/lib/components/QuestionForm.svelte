@@ -1,7 +1,7 @@
 <script lang="ts">
   // Use $props() to receive the backend function from the parent
   let { onSend } = $props<{ onSend: (text: string) => void }>();
-  
+
   let value = $state("");
 
   function handleSubmit(e: SubmitEvent) {
@@ -10,7 +10,7 @@
 
     // Trigger the parent's function
     onSend(value);
-    
+
     // Clear the input
     value = "";
   }
@@ -22,10 +22,10 @@
       Ask a question
     </label>
     <div class="flex gap-2">
-      <input 
-        bind:value 
-        class="govuk-input" 
-        id="onward-journey-input" 
+      <input
+        bind:value
+        class="govuk-input"
+        id="onward-journey-input"
         type="text"
       />
       <button type="submit" class="govuk-button" data-module="govuk-button">

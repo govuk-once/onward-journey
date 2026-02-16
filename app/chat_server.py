@@ -26,15 +26,7 @@ vs = vectorStore(file_path=KB_PATH)
 agent = OnwardJourneyAgent(
     handoff_package=example_handoff_pension_schemes_nohelp(),
     vector_store_embeddings=vs.get_embeddings(),
-    vector_store_chunks=vs.get_chunks(),
-    strategy=4 
-)
-
-# Overriding system instruction for better visual structure
-agent.system_instruction += (
-    "\n\nCRITICAL: Use Markdown formatting. Use ### for headers, **bold** for phone numbers, "
-    "and bullet points for lists of contact details to ensure readability."
-)
+    vector_store_chunks=vs.get_chunks())
 
 class ChatRequest(BaseModel):
     message: str
@@ -57,7 +49,7 @@ async def hand_back_to_agent(request: HandBackRequest):
         for entry in request.transcript:
             speaker = "Live Agent" if entry['role'] == 'assistant' else "User"
             agent._add_to_history(role=entry['role'], text=f"[{speaker}]: {entry['text']}")
-        
+
         # Explicitly asking for a structured summary in Markdown
         summary_prompt = (
             "I am back. Please provide a structured Markdown summary of the live chat "
