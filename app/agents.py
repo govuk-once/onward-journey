@@ -1,7 +1,7 @@
 import json
 import numpy as np
 import boto3
-import pandas as pd
+
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 
