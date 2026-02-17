@@ -122,52 +122,6 @@ class MemoryStore:
         top_indices = scores.argsort()[-k:][::-1]
         return [pool[i] for i in top_indices]
 
-    def search_best_practice(
-        self,
-        query: str,
-        outcome: Optional[str],
-        tags: Optional[list[str]] = None,
-        k: int = 5,
-    ) -> List[tuple[MemoryItem, float]]:
-        """
-        Return top-k best-practice memories as (item, score), filtered by outcome
-        and optionally by tag overlap.
-        """
-        if outcome:
-            pool = [i for i in self._items if i.outcome == outcome]
-        else:
-            pool = list(self._items)
-
-        if tags:
-            tag_set = set(t.strip().lower() for t in tags if t)
-            pool = [
-                i
-                for i in pool
-                if i.tags
-                and tag_set.intersection({t.strip().lower() for t in i.tags if t})
-            ]
-
-        if not pool:
-            return []
-
-        query_embedding = self.embedding_model.encode(query)
-        embedding_matrix = np.vstack([i.embedding for i in pool])
-        scores = cosine_similarity(query_embedding.reshape(1, -1), embedding_matrix)[0]
-        top_indices = scores.argsort()[-k:][::-1]
-        return [(pool[i], float(scores[i])) for i in top_indices]
-
-    def update_last_tags(self, session_id: str, tags: list[str]) -> None:
-        """
-        Update the tags on the most recent memory entry for the given session.
-        Used to align session memory metadata with admin :bp tagging.
-        """
-        session_items = [i for i in self._items if i.session_id == session_id]
-        if not session_items:
-            return
-        latest = max(session_items, key=lambda i: i.turn_index)
-        latest.tags = tags
-        self._after_update()
-
     def _next_turn_index(self, session_id: str) -> int:
         session_items = [i for i in self._items if i.session_id == session_id]
         if not session_items:

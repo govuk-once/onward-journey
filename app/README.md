@@ -114,10 +114,6 @@ The RAG tool (query_csv_rag) remains the core component that operates locally to
   - `--memory_max_items <int>` (per-session cap; evicts oldest)
   - `--session_id <id>` (scope memories to a session/user)
   - `--memory_path <path>` (JSON file location; default `app/output/memory.json`)
-- Best-practice memories (helpful-only) can be stored separately and retrieved alongside session notes:
-  - `--best_practice_store json|in_memory|none` (default `json`)
-  - `--best_practice_path <path>` (default `app/output/best_practice.json`)
-  - `--best_practice_k <int>` (top-k helpful snippets to include)
   - `--verbose` for debug logging (fast-answer hits, tool calls)
 
 ### Fast answer reuse
@@ -125,12 +121,6 @@ The RAG tool (query_csv_rag) remains the core component that operates locally to
 - The agent can reuse a previous answer from the same session without an LLM call when the closest prior question is very similar.
 - Control via `--fast_answer_threshold` (cosine similarity 0–1, default `0.95`; set to `0` to disable).
 - Memories tagged with outcome `bad` are automatically excluded from reuse.
-
-### Best-practice guardrails
-
-- Helpful interactions are stored in the best-practice store and injected into the system prompt as concise rules.
-- Use `--guardrail_tags billing,identity` to limit which tagged guardrails are included (optional).
-- Outcome filtering: only entries with outcome `good` are included; outcome `bad` is ignored.
 
 ### Interactive admin command
 

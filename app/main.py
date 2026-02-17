@@ -17,7 +17,6 @@ from loaders import load_test_queries
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_KB_PATH = os.path.join(SCRIPT_DIR, "../mock_data/mock_rag_data.csv")
 DEFAULT_MEMORY_PATH = os.path.join(SCRIPT_DIR, "output", "memory.json")
-DEFAULT_BEST_PRACTICE_PATH = os.path.join(SCRIPT_DIR, "output", "best_practice.json")
 
 
 class AgentRunner:
@@ -42,12 +41,8 @@ class AgentRunner:
         memory_max_items: int = 50,
         session_id: str = "default-session",
         memory_path: str = DEFAULT_MEMORY_PATH,
-        best_practice_store_type: str = "json",
-        best_practice_path: str = DEFAULT_BEST_PRACTICE_PATH,
-        best_practice_k: int = 3,
         fast_answer_threshold: float = 0.95,
         fast_answer_exclude_outcome: str = "bad",
-        guardrail_tags: list[str] | None = None,
         verbose: bool = False,
     ):
         """
@@ -85,12 +80,8 @@ class AgentRunner:
         self.memory_max_items = memory_max_items
         self.session_id = session_id
         self.memory_path = memory_path
-        self.best_practice_store_type = best_practice_store_type
-        self.best_practice_path = best_practice_path
-        self.best_practice_k = best_practice_k
         self.fast_answer_threshold = fast_answer_threshold
         self.fast_answer_exclude_outcome = fast_answer_exclude_outcome
-        self.guardrail_tags = guardrail_tags
         self.verbose = verbose
 
         self._set_all_seeds(self.seed)
@@ -170,18 +161,6 @@ class AgentRunner:
                 max_items_per_session=self.memory_max_items,
             )
 
-        best_practice_store = None
-        if self.best_practice_store_type == "in_memory":
-            best_practice_store = MemoryStore(
-                embedding_model=vector_store.get_embedding_model(),
-                max_items_per_session=self.memory_max_items,
-            )
-        elif self.best_practice_store_type == "json":
-            best_practice_store = JsonMemoryStore(
-                embedding_model=vector_store.get_embedding_model(),
-                file_path=self.best_practice_path,
-                max_items_per_session=self.memory_max_items,
-            )
         return OnwardJourneyAgent(
             handoff_package=handoff_data,
             vector_store_embeddings=vector_store.get_embeddings(),
@@ -194,11 +173,8 @@ class AgentRunner:
             memory_store=memory_store,
             session_id=self.session_id,
             memory_k=self.memory_k,
-            best_practice_store=best_practice_store,
-            best_practice_k=self.best_practice_k,
             fast_answer_threshold=self.fast_answer_threshold,
             fast_answer_exclude_outcome=self.fast_answer_exclude_outcome,
-            guardrail_tags=self.guardrail_tags,
             verbose=self.verbose,
         )
 
@@ -292,35 +268,6 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--best_practice_store",
-        type=str,
-        choices=["none", "in_memory", "json"],
-        default="json",
-        help="Backend for best-practice memories marked helpful.",
-    )
-
-    parser.add_argument(
-        "--best_practice_path",
-        type=str,
-        default=DEFAULT_BEST_PRACTICE_PATH,
-        help=f"Path for best-practice JSON store (default: {DEFAULT_BEST_PRACTICE_PATH}).",
-    )
-
-    parser.add_argument(
-        "--guardrail_tags",
-        type=str,
-        default=None,
-        help="Comma-separated tags to filter best-practice guardrails (e.g., billing,identity).",
-    )
-
-    parser.add_argument(
-        "--best_practice_k",
-        type=int,
-        default=3,
-        help="Top-k best-practice snippets to retrieve per turn.",
-    )
-
-    parser.add_argument(
         "--fast_answer_threshold",
         type=float,
         default=0.95,
@@ -359,12 +306,8 @@ if __name__ == "__main__":
         memory_max_items=args.memory_max_items,
         session_id=args.session_id,
         memory_path=args.memory_path,
-        best_practice_store_type=args.best_practice_store,
-        best_practice_path=args.best_practice_path,
-        best_practice_k=args.best_practice_k,
         fast_answer_threshold=args.fast_answer_threshold,
         fast_answer_exclude_outcome="bad",
-        guardrail_tags=[t.strip() for t in args.guardrail_tags.split(",")] if args.guardrail_tags else None,
         verbose=args.verbose,
     )
 

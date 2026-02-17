@@ -31,12 +31,8 @@ class OnwardJourneyAgent:
         memory_store: Optional[MemoryStore] = None,
         session_id: str = "default-session",
         memory_k: int = 5,
-        best_practice_store: Optional[MemoryStore] = None,
-        best_practice_k: int = 3,
-        best_practice_outcome: str = "good",
         fast_answer_threshold: float = 0.95,
         fast_answer_exclude_outcome: str = "bad",
-        guardrail_tags: Optional[list[str]] = None,
     ):
 
         # declare tools for bedrock
@@ -60,7 +56,6 @@ class OnwardJourneyAgent:
         self.available_tools   = {f.__name__: f for f in self.specialized_tools}
         self.top_K             = top_K
 
-
         # Accessibility to vector store embeddings, vector store text chunk equivalents and vector store embedding model to embed user queries
         self.embeddings      = vector_store_embeddings
         self.chunk_data      = vector_store_embeddings_text_chunks
@@ -73,12 +68,8 @@ class OnwardJourneyAgent:
         self.memory_store    = memory_store
         self.session_id      = session_id
         self.memory_k        = memory_k
-        self.best_practice_store = best_practice_store
-        self.best_practice_k = best_practice_k
-        self.best_practice_outcome = best_practice_outcome
         self.fast_answer_threshold = fast_answer_threshold
         self.fast_answer_exclude_outcome = fast_answer_exclude_outcome
-        self.guardrail_tags = guardrail_tags
 
         # Specialized System Instruction for onward journey agent
         self.system_instruction = (
@@ -94,9 +85,6 @@ class OnwardJourneyAgent:
 
         # Initialize conversation history
         self.history: List[Dict[str, Any]] = [  ]
-
-        # Track last applied tags from :bp for per-turn updates
-        self._session_tags: Optional[list[str]] = None
 
     def _initialise_aws(self, aws_region: str, role_arn: Optional[str], role_session_name: str):
         if role_arn != None:
@@ -194,34 +182,10 @@ class OnwardJourneyAgent:
             formatted_sections.append(
                 "Recent session notes:\n" + "\n".join(m.format_for_prompt() for m in memories)
             )
-        guardrails = self._build_guardrail_block(query=query)
-        if guardrails:
-            formatted_sections.append(guardrails)
 
         if not formatted_sections:
             return None
         return "\n\n".join(formatted_sections)
-
-    def _build_guardrail_block(self, query: str) -> Optional[str]:
-        """
-        Fetch best-practice patterns and render as concise guardrail bullets.
-        """
-        if not self.best_practice_store:
-            return None
-        results = self.best_practice_store.search_best_practice(
-            query=query,
-            outcome=self.best_practice_outcome,
-            tags=self.guardrail_tags,
-            k=self.best_practice_k,
-        )
-        if not results:
-            return None
-
-        lines = []
-        for item, score in results:
-            tag_str = f"[{', '.join(item.tags)}] " if item.tags else ""
-            lines.append(f"- {tag_str}{item.summary}")
-        return "Proven helpful patterns (guardrails):\n" + "\n".join(lines)
 
     def _get_fast_answer(self, query: str) -> Optional[str]:
         """
@@ -265,25 +229,6 @@ class OnwardJourneyAgent:
             tags=tags,
         )
 
-    def _record_best_practice(
-        self,
-        user_text: str,
-        assistant_text: str,
-        outcome: str,
-        tags: Optional[list[str]] = None,
-    ) -> None:
-        """Persist a best-practice memory entry when marked helpful."""
-        if not self.best_practice_store:
-            return
-        summary = f"Helpful pattern: User: {user_text.strip()} | Assistant: {assistant_text.strip()}"
-        self.best_practice_store.add(
-            session_id="best_practice",
-            role="assistant",
-            text=assistant_text,
-            summary=summary,
-            outcome=outcome,
-            tags=tags,
-        )
 
     def _flush_session_memory(self) -> None:
         """
@@ -447,11 +392,6 @@ class OnwardJourneyAgent:
         #print(f"Onward Journey Agent: {first_response}")
         print("-" * 100 + "\n")
 
-        # 2. Start the interactive loop
-        last_user: Optional[str] = None
-        last_answer: Optional[str] = None
-        self._session_tags = None
-
         # Defer disk writes for JSON memory store; enable at session end
         try:
             from memory_store import JsonMemoryStore  # local import to avoid cycle
@@ -469,39 +409,12 @@ class OnwardJourneyAgent:
                 print("\n👋 Conversation with Onward Journey Agent ended.")
                 break
 
-            # Admin command: promote last turn to best-practice with tags
-            if user_input.strip().startswith(":bp"):
-                if not last_user or not last_answer:
-                    print("No previous turn to tag yet.")
-                    continue
-                # syntax: :bp outcome tag1,tag2
-                parts = user_input.strip().split(" ", 2)
-                outcome = parts[1] if len(parts) > 1 else "good"
-                tags = []
-                if len(parts) > 2:
-                    tags = [t.strip() for t in parts[2].split(",") if t.strip()]
-                self._record_best_practice(
-                    user_text=last_user,
-                    assistant_text=last_answer,
-                    outcome=outcome,
-                    tags=tags,
-                )
-                if tags:
-                    # Apply tags to latest turn memory entry immediately
-                    self._session_tags = tags
-                    if self.memory_store:
-                        self.memory_store.update_last_tags(session_id=self.session_id, tags=tags)
-                print(f"Saved last turn as best-practice (outcome={outcome}, tags={tags}).")
-                continue
-
             if not user_input.strip():
                 continue
 
             # Send the new user message and handle any tool calls it triggers
             llm_response = self._send_message_and_handle_tools(user_input)
             print(f"\n Onward Journey Agent: {llm_response}\n")
-            last_user = user_input
-            last_answer = llm_response
             # Record turn immediately for fast-answer reuse (disk write deferred)
             self._record_memory(user_text=user_input, assistant_text=llm_response, tags=None)
 
