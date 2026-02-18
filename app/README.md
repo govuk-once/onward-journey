@@ -121,9 +121,3 @@ The RAG tool (query_csv_rag) remains the core component that operates locally to
 - The agent can reuse a previous answer from the same session without an LLM call when the closest prior question is very similar.
 - Control via `--fast_answer_threshold` (cosine similarity 0–1, default `0.95`; set to `0` to disable).
 - Memories tagged with outcome `bad` are automatically excluded from reuse.
-
-### Interactive admin command
-
-- Inside interactive mode, you can promote the last turn to a best-practice rule with tags:
-  - `:bp <outcome> <tag1,tag2>` (example: `:bp good billing,refund`)
-  - Best-practice saves happen immediately; session memory updates every turn for fast-answer reuse, but JSON persistence is deferred until you exit the chat. Tags from the most recent `:bp` are propagated to the latest turn’s memory entry and persisted on exit.
