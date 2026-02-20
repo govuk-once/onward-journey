@@ -4,7 +4,7 @@ from typing import List, Optional
 
 class PromptGuidance:
     """
-    Loads soft behaviour Guidance and builds a compact per-turn breidf
+    Loads soft behaviour Guidance and builds a compact per-turn breif
     that can be appeneded to the system instructions
     """
 
