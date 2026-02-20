@@ -71,7 +71,7 @@ class LiveChatMixin:
     def _get_live_chat_registry(self):
             return {
                 "connect_to_live_chat_MOJ": tools.connect_to_moj,
-                "connect_to_live_chat_immigration": tools.connect_to_immigration,
+                "connect_to_live_chat_immigration_and_visas": tools.connect_to_immigration_and_visas,
                 "connect_to_live_chat_HMRC_pensions_forms_and_returns": tools.connect_to_hmrc
             }
 
@@ -98,18 +98,21 @@ class HandOffMixin:
         return await self._send_message_and_tools(initial_prompt)
 
 class ServiceTriageQMixin:
-    # Simulating Genesys requirements for the Immigration service
-    SERVICE_SCHEMAS = {
-        "immigration": ["visa_type"]
-    }
+    SERVICE_SCHEMAS = tools.get_triage_data()
 
     async def extract_triage_data(self, service: str, history: List[Dict]) -> Dict[str, Any]:
         """
         Performs a semantic gap analysis by calling the LLM to extract data from history C.
         """
-        required = self.SERVICE_SCHEMAS.get(service, [])
+        found_key = None
+        for key, value in self.SERVICE_SCHEMAS.items():
+            if value.get('name') == service:
+                found_key = key
+
+        required = self.SERVICE_SCHEMAS[found_key]['triage_data'].get('missing', []) if found_key is not None else []
         # We only send the text content to save tokens and focus the extraction
         history_str = json.dumps(history)
+
 
         # crafting a prompt to extract required triage data from the conversation history
         extraction_prompt = (
@@ -117,7 +120,6 @@ class ServiceTriageQMixin:
             f"Identify values for these fields ONLY: {required}.\n"
             "Return ONLY a JSON object with keys: 'extracted', 'missing', and 'follow_up'."
         )
-
         # llm call, use a low temperature for deterministic extraction and client assumed to be part of obj
         body = json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
@@ -142,42 +144,6 @@ class ServiceTriageQMixin:
         except Exception as e:
             # Fallback if the LLM fails to return valid JSON
             return {"extracted": {}, "missing": required, "follow_up": "Could you please provide more details?"}
-
-class RunConversationMixin:
-    def run_conversation(self) -> None:
-            """
-            Interactive terminal loop that mirrors the original functionality
-            but uses the new unified multi-tool logic.
-            """
-            # Display the specialized agent's first response
-            print("\n" + "-" * 100)
-            print("You are now speaking with the Onward Journey Agent.")
-            #print(f"Onward Journey Agent: {first_response}")
-            print("-" * 100 + "\n")
-
-            # Handle handoff if history exists
-            if self.handoff_package.get('final_conversation_history'):
-                print("Processing context from previous agent...")
-                initial_response = self.process_handoff()
-                print(f"\nAgent: {initial_response}\n")
-
-            # Standard interactive loop
-            while True:
-                try:
-                    user_input = input("You: ").strip()
-
-                    if user_input.lower() in ["exit", "quit", "end"]:
-                        print("\n👋 Conversation with Onward Journey Agent ended.")
-                        break
-
-                    if not user_input:
-                        continue
-
-                    response = self._send_message_and_tools(user_input)
-                    print(f"\n Onward Journey Agent: {response}\n")
-
-                except KeyboardInterrupt:
-                    break
 
 class BaseAgent:
     def __init__(self, model_name: str, aws_region: str, temperature: float = 0.0):
@@ -232,19 +198,17 @@ class BaseAgent:
                 tool_name = call['name']
                 args = call['input']
 
-                # Generalized Triage Gate
                 # Intercept any tool starting with 'connect_to_live_chat_'
                 if tool_name.startswith("connect_to_live_chat_") and hasattr(self, 'extract_triage_data'):
                     service_id = tool_name.replace("connect_to_live_chat_", "")
 
                     # Run the extraction check (C vs T)
                     triage_report = await self.extract_triage_data(service_id, self.history)
-
                     if triage_report.get("missing"):
                         # Block the actual handoff tool call
                         out = (f"HANDOFF_BLOCKED: Information missing for {service_id}: "
                             f"{triage_report['missing']}. "
-                            f"INSTRUCTION: Ask the user this follow-up: {triage_report['follow_up']}")
+                            f"INSTRUCTION: Ask the user for missing information using {triage_report['prompt']}")
                     else:
                         # Triage complete: Inject extracted data and run the tool
                         args['triage_data'] = triage_report.get('extracted', {})
@@ -278,7 +242,7 @@ class BaseAgent:
                 final_text = next((c['text'] for c in final_resp_body.get('content', []) if c['type'] == 'text'), "Transferring...")
                 return f"{final_text}\n\n{handoff_signal}"
 
-class GovUKAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, GovUKSearchMixin, RunConversationMixin):
+class GovUKAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, GovUKSearchMixin):
     def __init__(self, handoff_package: dict,
                  embedding_model:str = "amazon.titan-embed-text-v2:0",
                  model_name: str = "anthropic.claude-3-7-sonnet-20250219-v1:0",
@@ -305,7 +269,7 @@ class GovUKAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, GovUKSearchMixin,
         }
         self.bedrock_tools = tools.get_govuk_definitions()
 
-class OnwardJourneyAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchMixin, LiveChatMixin, RunConversationMixin, ServiceTriageQMixin):
+class OnwardJourneyAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchMixin, LiveChatMixin, ServiceTriageQMixin):
     def __init__(self,
                  handoff_package: dict,
                  vector_store_embeddings: np.ndarray,
@@ -371,7 +335,6 @@ class OnwardJourneyAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchM
 
             "Always clarify ambiguity before calling tools."
         )
-
     def _tool_declarations(self):
         """Maps Bedrock tool names to Python functions based on strategy."""
 
@@ -384,7 +347,7 @@ class OnwardJourneyAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchM
 
         self.bedrock_tools = (tools.get_internal_kb_definition() + tools.get_live_chat_definitions())
 
-class hybridAgent(OnwardJourneyAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchMixin, GovUKSearchMixin, LiveChatMixin, RunConversationMixin):
+class hybridAgent(OnwardJourneyAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchMixin, GovUKSearchMixin, LiveChatMixin):
     def __init__(self,
                  handoff_package: dict,
                  vector_store_embeddings: np.ndarray,
