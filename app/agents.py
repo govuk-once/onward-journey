@@ -203,6 +203,7 @@ class BaseAgent:
 
     async def _send_message_and_tools(self, prompt: str) -> str:
         """The core orchestration loop shared by all agents, now with dynamic triage gating."""
+
         self._add_to_history("user", prompt)
         effective_system_instruction = self._compose_system_instrution(prompt)
 
@@ -286,6 +287,7 @@ def _compose_system_instrutions(self, latest_user_prompts: str) -> str:
         return self.system_instructions
     
     try:
+        
         return self.prompt_guidance.compose_system_instrutions(
             base_system_instrutions=self.system_instruction,
             latest_user_prompts=latest_user_prompts,

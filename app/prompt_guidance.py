@@ -8,7 +8,7 @@ class PromptGuidance:
     that can be appeneded to the system instructions
     """
 
-    def _init_(
+    def __init__(
             self,
             policy_path: Optional[str] = None,
     ):
@@ -42,6 +42,7 @@ class PromptGuidance:
             history: List[dict],
         ) -> str:
         style_brief = self.build_style_brief(latest_user_prompt, history)
+
         if not style_brief:
             return base_system_instruction
         
@@ -53,4 +54,5 @@ class PromptGuidance:
             "4) Style alignment from guidance\n"
         )
         return f"{base_system_instruction}\n\n{priority}\n\n{style_brief}".strip()
+    
     
