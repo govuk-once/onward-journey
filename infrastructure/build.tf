@@ -152,3 +152,40 @@ data "archive_file" "rds_tool_zip" {
     null_resource.install_rds_tool_deps
   ]
 }
+
+## LAMBDA BUILD: GENESYS TOOL (MCP SERVER)
+# Bundles the Genesys API tool with dependencies for external connectivity.
+
+resource "null_resource" "install_genesys_tool_deps" {
+  triggers = {
+    # Re-run if the tool logic changes
+    python_code = filemd5("${path.module}/../app/genesys_tool.py")
+  }
+
+  provisioner "local-exec" {
+    command = <<EOT
+      rm -rf ${path.module}/../dist/genesys_tool_staging
+      mkdir -p ${path.module}/../dist/genesys_tool_staging
+      cd ${path.module}/../app
+
+      uv pip install \
+        --target ../dist/genesys_tool_staging \
+        --python-platform x86_64-manylinux_2_28 \
+        --python-version 3.12 \
+        --no-cache \
+        requests
+
+      cp genesys_tool.py ../dist/genesys_tool_staging/
+    EOT
+  }
+}
+
+data "archive_file" "genesys_tool_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../dist/genesys_tool_staging"
+  output_path = "${path.module}/../dist/genesys_tool_payload.zip"
+
+  depends_on = [
+    null_resource.install_genesys_tool_deps
+  ]
+}
