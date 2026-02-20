@@ -13,6 +13,7 @@ from helpers                  import SearchResult
 
 import asyncio
 import tools
+from prompt_guidance import PromptGuidance
 
 load_dotenv()
 
@@ -190,6 +191,7 @@ class BaseAgent:
             self.available_tools = {}
             self.bedrock_tools = []
             self.system_instruction = ""
+            self.prompt_guidance = PromptGuidance()
 
     def _add_to_history(self, role: str, text: str = '', tool_calls: list = [], tool_results: list = []):
         """Standardized history management for all subclasses."""
@@ -201,12 +203,14 @@ class BaseAgent:
 
     async def _send_message_and_tools(self, prompt: str) -> str:
         """The core orchestration loop shared by all agents, now with dynamic triage gating."""
+
         self._add_to_history("user", prompt)
+        effective_system_instruction = self._compose_system_instrution(prompt)
 
         while True:
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
-                "system": self.system_instruction,
+                "system": effective_system_instruction,
                 "messages": self.history,
                 "max_tokens": 4096,
                 "temperature": self.temperature,
@@ -277,6 +281,20 @@ class BaseAgent:
                 final_resp_body = json.loads(final_resp['body'].read())
                 final_text = next((c['text'] for c in final_resp_body.get('content', []) if c['type'] == 'text'), "Transferring...")
                 return f"{final_text}\n\n{handoff_signal}"
+
+def _compose_system_instrutions(self, latest_user_prompts: str) -> str:
+    if not self.prompt_guidance:
+        return self.system_instructions
+    
+    try:
+        
+        return self.prompt_guidance.compose_system_instrutions(
+            base_system_instrutions=self.system_instruction,
+            latest_user_prompts=latest_user_prompts,
+            history=self.history
+        )
+    except Exception:
+        return self.system_instruction
 
 class GovUKAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, GovUKSearchMixin, RunConversationMixin):
     def __init__(self, handoff_package: dict,
