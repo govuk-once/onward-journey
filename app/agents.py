@@ -13,6 +13,7 @@ from helpers                  import SearchResult
 
 import asyncio
 import tools
+from prompt_guidance import PromptGuidance
 
 load_dotenv()
 
@@ -172,7 +173,8 @@ class BaseAgent:
         while True:
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
-                "system": self.system_instruction,
+                "system": 
+              effective_system_instruction,
                 "messages": self.history,
                 "max_tokens": 4096,
                 "temperature": self.temperature,
@@ -198,6 +200,7 @@ class BaseAgent:
                 tool_name = call['name']
                 args = call['input']
 
+                # Generalized Triage Gate
                 # Intercept any tool starting with 'connect_to_live_chat_'
                 if tool_name.startswith("connect_to_live_chat_") and hasattr(self, 'extract_triage_data'):
                     service_id = tool_name.replace("connect_to_live_chat_", "")
