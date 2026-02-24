@@ -157,6 +157,8 @@ class BaseAgent:
             self.available_tools = {}
             self.bedrock_tools = []
             self.system_instruction = ""
+            self.prompt_guidance = PromptGuidance()
+
 
     def _add_to_history(self, role: str, text: str = '', tool_calls: list = [], tool_results: list = []):
         """Standardized history management for all subclasses."""
@@ -169,6 +171,8 @@ class BaseAgent:
     async def _send_message_and_tools(self, prompt: str) -> str:
         """The core orchestration loop shared by all agents, now with dynamic triage gating."""
         self._add_to_history("user", prompt)
+
+        effective_system_instruction = self.prompt_guidance.compose_system_instruction(prompt)
 
         while True:
             body = {
