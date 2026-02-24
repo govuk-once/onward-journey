@@ -8,7 +8,8 @@
     deploymentId: string;
     region: string;
     token: string;
-    reason: string; 
+    reason: string;
+    customAttributes?: Record<string, string>;
   }
 
   interface Message {
@@ -19,7 +20,17 @@
     timestamp?: string;
     agentId?: string;
   }
-  
+
+
+  interface Message {
+    id: string;
+    user: string;
+    message: string;
+    isSelf: boolean;
+    timestamp?: string;
+    agentId?: string;
+  }
+
 
   interface Message {
     id: string;
@@ -144,43 +155,62 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
     const newSocket = new WebSocket(uri);
     socket = newSocket;
 
+
+    console.log("Session Token:", sessionToken);
+    console.log("Attributes to send:", JSON.stringify(config.customAttributes));
+
+
     newSocket.onopen = () => {
       newSocket.send(JSON.stringify({
         action: "configureSession",
         deploymentId: config.deploymentId,
-        token: sessionToken
+        token: sessionToken,
+        data: {
+          customAttributes: config.customAttributes || {}
+        }
       }));
     };
 
-    newSocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.class === "SessionResponse" && data.code === 200) {
-          const currentSessionHistory = chatMessages
-            .map((m: Message) => {
-              const time = m.timestamp ? `[${m.timestamp}] ` : "";
-              const agentId = m.agentId ? ` (Agent: ${m.agentId})` : "";
-              return `${time}${m.user}${agentId}: ${m.message}`;
-            })
-            .join('\n');
+  newSocket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
 
-          const fullContext = `--- SYSTEM: CONTINUED HANDOFF CONTEXT ---\n` +
-                              `REASON: ${config.reason}\n\n` +
-                              `PREVIOUS INTERACTION LOG:\n${currentSessionHistory}`;
+    if (data.class === "SessionResponse" && data.code === 200) {
+        const currentSessionHistory = chatMessages
+          .map((m: Message) => {
+            const time = m.timestamp ? `[${m.timestamp}] ` : "";
+            const agentId = m.agentId ? ` (Agent: ${m.agentId})` : "";
+            return `${time}${m.user}${agentId}: ${m.message}`;
+          })
+          .join('\n');
 
-          newSocket.send(JSON.stringify({
-            action: "onMessage",
-            token: sessionToken,
-            message: { type: "Text", text: fullContext }
-          }));
+        const fullContext = `--- SYSTEM: CONTINUED HANDOFF CONTEXT ---\n` +
+                            `REASON: ${config.reason}\n\n` +
+                            `PREVIOUS INTERACTION LOG:\n${currentSessionHistory}`;
 
-          chatMessages = [...chatMessages, {
+        setTimeout(() => {
+            newSocket.send(JSON.stringify({
+                action: "onMessage",
+                token: sessionToken,
+                message: {
+                    type: "Text",
+                    text: fullContext,
+                    channel: {
+                        metadata: {
+                            customAttributes: config.customAttributes
+                        }
+                    }
+                }
+            }));
+        }, 1000);
+
+        chatMessages = [...chatMessages, {
             message: "All previous history (including prior advisors) has been shared.",
             user: "System",
             isSelf: false,
             id: uuid(),
             timestamp: new Date().toLocaleTimeString()
-          }];
-      }
+        }];
+    }
 
       if (data.class === "StructuredMessage" && data.body?.text && data.body.direction === "Outbound") {
         chatMessages = [...chatMessages, {
@@ -230,6 +260,9 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
         const jsonEnd = responseText.lastIndexOf('}') + 1;
         const config: GenesysHandoff = JSON.parse(responseText.substring(jsonStart, jsonEnd));
         chatMessages = [...chatMessages, { message: "Transferring to a live agent...", user: "System", isSelf: false, id: uuid() }];
+        console.log("Handoff Config:", config);
+        console.log("Extracted Visa Type:", config.customAttributes?.["Task.VisaType"]);
+
         setupGenesysSocket(config);
       } else {
         chatMessages = [...chatMessages, {

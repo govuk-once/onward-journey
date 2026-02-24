@@ -15,12 +15,6 @@ def df_to_text_chunks(df):
                  f"The tags are {row['tags']}. The url is {row['url']}. "
                  f"The last time the page was updated is {row['last_update']}. "
                  f"The description is {row['description']}.")
-        chunk = (f"The unique id is {row['uid']}. The service name is {row['service_name']}. "
-                 f"The department is {row['department']}. The phone number is {row['phone_number']}. "
-                 f"The topic is {row['topic']}. The user type is {row['user_type']}. "
-                 f"The tags are {row['tags']}. The url is {row['url']}. "
-                 f"The last time the page was updated is {row['last_update']}. "
-                 f"The description is {row['description']}.")
         chunks.append(chunk)
     return chunks
 

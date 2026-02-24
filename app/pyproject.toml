@@ -12,6 +12,7 @@ dependencies = [
     "numpy>=2.0.2",
     "opensearch-py>=3.0.0",
     "pandas>=2.3.3",
+    "purecloudplatformclientv2>=238.0.0",
     "scikit-learn>=1.6.1",
     "seaborn>=0.13.2",
     "sentence-transformers>=5.1.2",
