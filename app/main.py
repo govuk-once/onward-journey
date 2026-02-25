@@ -3,11 +3,14 @@ import numpy as np
 import argparse
 import os  # Required for directory management
 import asyncio
+import json
+
 
 from data                        import vectorStore
 from agents                      import OnwardJourneyAgent, GovUKAgent, hybridAgent
 from loaders                     import load_test_queries
 from metrics                     import clarification_success_gain_metric
+from datetime                    import datetime, timezone
 
 from test import Evaluator
 
@@ -34,7 +37,13 @@ class AgentRunner:
 
         self._set_all_seeds(self.seed)
 
-    def __call__(self, run_mode: str, handoff_data: dict, top_k_oj: int = 0, top_k_govuk: int = 0):
+    def __call__(self, 
+                run_mode: str,
+                handoff_data: dict, 
+                top_k_oj: int = 0, 
+                top_k_govuk: int = 0,
+                cag_collect: bool = False,
+                cag_file_path: str = "cag_interactions.json"):
         """
         Executes the agent with specific Top-K weightings and saves results
         to a unique sub-folder.
@@ -106,9 +115,49 @@ class AgentRunner:
                     response = asyncio.run(response) if asyncio.iscoroutine(response) else response
                     print(f"\n Onward Journey Agent: {response}\n")
 
+                    if cag_collect and self._is_answer_accepted():
+                        self._save_cag_interaction(
+                            file_path=cag_file_path,
+                            query=user_input,
+                            answer=response
+                        )
+                        print(f"Saved interaction to {cag_file_path}💾\n")
+
                 except KeyboardInterrupt:
                     break
+    @staticmethod
+    def _is_answer_accepted() -> bool:
+        while True:
+            reply = input("are you happy with this answer? (y/n): ").strip().lower()
+            if reply in {"y", "yes"}:
+                return True
+            if reply in {"n", "no"}:
+                return False
+            print ("Please respond with 'y' or 'n'.")
 
+    @staticmethod
+    def _save_cag_interaction(file_path:str, query: str, answer: str):
+        interaction = {
+            "timstamp_utc": datetime.now(timezone.utc).isoformat(),
+            "query":query,
+            "answer": answer
+        }
+
+        records = []
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                    if isinstance(loaded, list):
+                        records = loaded
+            except (json.JSONDecodeError, OSError):
+                records = []
+
+        records.append(interaction)
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(records, f, ensure_ascii=False, indent=2)
+    
     def _set_all_seeds(self, seed_value: int):
         random.seed(seed_value)
         np.random.seed(seed_value)
@@ -166,6 +215,8 @@ def get_args(parser):
                         help=f'AWS region to use for the Bedrock client (default: eu-west-2).')
     parser.add_argument('--output_dir', type=str, help='Directory to save test outputs.')
     parser.add_argument('--role_arn', type=str, default=None, help='AWS Role ARN for Bedrock access (if required).')
+    parser.add_argument('--cag-collect', actions='store_true', help='Ask for answer acceptance after each reply and save accepted interactions in to a json file')
+    parser.add_argument('--cag-file-path', type=str, default='cag_interaction.json', help=' path to JSON file used bu --cag-collect (default:cag_interactions.json).')
 
     return parser.parse_args()
 # Original command-line interface remains the entry point
@@ -192,4 +243,11 @@ if __name__ == "__main__":
         runner(args.mode, handoff_data=default_handoff(), top_k_oj=oj_k, top_k_govuk=gov_k)
     else:
         # Default interactive values
-        runner(args.mode, handoff_data=default_handoff(), top_k_oj=3, top_k_govuk=3)
+        runner(
+            args.mode,
+            handoff_data=default_handoff(),
+            top_k_oj=3,
+            top_k_govuk=3,
+            cag_collect=args.cag_collect,
+            cag_file_path=args.cag_file_path
+            )
