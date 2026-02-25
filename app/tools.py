@@ -155,6 +155,13 @@ def get_triage_data():
                    1: {"name": "immigration_and_visas", "description": "Immigration and visas", "deployment_id": os.getenv("GENESYS_DEPLOYMENT_ID_IMMIGRATION")},
                    2: {"name": "hmrc", "description": "Pensions, forms and returns", "deployment_id": os.getenv("GENESYS_DEPLOYMENT_ID_PENSIONS_FORMS_AND_RETURNS")}}
 
+    # if the crendentials are not present return empty metadata and skip APi call.
+    client_id = os.getenv("GENESYS_CLOUD_CLIENT_ID")
+    client_secret = os.getenv("GENESYS_CLOUD_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        for key in department_data:
+                department_data[key]["triage_data"] = {"missing": [], "field_options": {}, "prompt": ""}
+        return department_data
     discovery = GenesysServiceDiscovery()
 
     for key, dept in department_data.items():
@@ -165,6 +172,9 @@ def get_triage_data():
     return department_data
 
 def get_live_chat_definitions() -> List[Dict[str, Any]]:
+    # without gensys creds disable live chat tools to avoid unusable tool calls
+    if not  os.get_env ("GENESYS_CLOUD_CLIENT_ID") or not os.getenv("GENESYS_CLOUD_CLIENT_SECRET"):
+        return []
 
     tools_list = []
 
