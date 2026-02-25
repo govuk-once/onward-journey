@@ -172,7 +172,11 @@ class BaseAgent:
         """The core orchestration loop shared by all agents, now with dynamic triage gating."""
         self._add_to_history("user", prompt)
 
-        effective_system_instruction = self.prompt_guidance.compose_system_instruction(prompt)
+        effective_system_instruction = self.prompt_guidance.compose_system_instruction(
+            self.system_instruction,
+            prompt,
+            self.history
+            )
 
         while True:
             body = {
