@@ -173,7 +173,7 @@ def get_triage_data():
 
 def get_live_chat_definitions() -> List[Dict[str, Any]]:
     # without gensys creds disable live chat tools to avoid unusable tool calls
-    if not  os.get_env ("GENESYS_CLOUD_CLIENT_ID") or not os.getenv("GENESYS_CLOUD_CLIENT_SECRET"):
+    if not  os.getenv ("GENESYS_CLOUD_CLIENT_ID") or not os.getenv("GENESYS_CLOUD_CLIENT_SECRET"):
         return []
 
     tools_list = []
