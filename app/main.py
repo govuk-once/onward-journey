@@ -1,7 +1,7 @@
 import random
 import numpy as np
 import argparse
-import os  # Required for directory management
+import os
 import asyncio
 import json
 
@@ -11,6 +11,8 @@ from agents                      import OnwardJourneyAgent, GovUKAgent, hybridAg
 from loaders                     import load_test_queries
 from metrics                     import clarification_success_gain_metric
 from datetime                    import datetime, timezone
+from typing                      import Optional
+from cag_cache                   import CAGQueryCache
 
 from test import Evaluator
 
@@ -43,7 +45,10 @@ class AgentRunner:
                 top_k_oj: int = 0, 
                 top_k_govuk: int = 0,
                 cag_collect: bool = False,
-                cag_file_path: str = "cag_interactions.json"):
+                cag_file_path: str = "cag_interaction.json",
+                cag_cache: bool = False,
+                cag_cache_threshold: float = 0.90,
+                cag_cache_file_path: Optional[str] = None):
         """
         Executes the agent with specific Top-K weightings and saves results
         to a unique sub-folder.
@@ -99,6 +104,11 @@ class AgentRunner:
                 initial_response = agent.process_handoff()
                 print(f"\nAgent: {initial_response}\n")
 
+            cache = None
+            if cag_cache:
+                cache_path = cag_cache_file_path or cag_file_path
+                cache = CAGQueryCache(cache_path)
+
             # Standard interactive loop
             while True:
                 try:
@@ -110,6 +120,12 @@ class AgentRunner:
 
                     if not user_input:
                         continue
+
+                    if cache is not None:
+                        cache_match = cache.lookup(user_input, threshold=cag_cache_threshold)
+                        if cache_match:
+                            print(f"\n Onward Journey Agent (cache hit, score={cache_match.score:.3f}): {cache_match.answer}\n")
+                            continue
 
                     response = agent._send_message_and_tools(user_input)
                     response = asyncio.run(response) if asyncio.iscoroutine(response) else response
@@ -217,6 +233,9 @@ def get_args(parser):
     parser.add_argument('--role_arn', type=str, default=None, help='AWS Role ARN for Bedrock access (if required).')
     parser.add_argument('--cag-collect', action='store_true', help='Ask for answer acceptance after each reply and save accepted interactions in to a json file')
     parser.add_argument('--cag-file-path', type=str, default='cag_interaction.json', help=' path to JSON file used bu --cag-collect (default:cag_interactions.json).')
+    parser.add_argument('--cag-cache', action='store_true', help='Enable cache lookup before LLM/tool invocation using previously accepted CAG interactions.')
+    parser.add_argument('--cag-cache-threshold', type=float, default=0.92, help='Minimum similarity score (0.0-1.0) required for a cache hit (default: 0.92).')
+    parser.add_argument('--cag-cache-file-path', type=str, default=None, help='Path to cache JSON file. Defaults to --cag-file-path.')
 
     return parser.parse_args()
 # Original command-line interface remains the entry point
@@ -249,5 +268,8 @@ if __name__ == "__main__":
             top_k_oj=3,
             top_k_govuk=3,
             cag_collect=args.cag_collect,
-            cag_file_path=args.cag_file_path
+            cag_file_path=args.cag_file_path,
+            cag_cache=args.cag_cache,
+            cag_cache_threshold=args.cag_cache_threshold,
+            cag_cache_file_path=args.cag_cache_file_path
             )
