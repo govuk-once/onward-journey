@@ -18,6 +18,7 @@ from test import Evaluator
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_KB_PATH = os.path.join(SCRIPT_DIR, "../mock_data/mock_rag_data.csv")
+DEFAULT_CAG_FILE_PATH = os.path.join(SCRIPT_DIR, "data", "cag_interaction.json")
 
 def default_handoff():
     return {'handoff_agent_id': 'GOV.UK Chat', 'final_conversation_history': []}
@@ -48,7 +49,7 @@ class AgentRunner:
                 cag_file_path: str = "cag_interaction.json",
                 cag_cache: bool = False,
                 cag_cache_threshold: float = 0.90,
-                cag_cache_file_path: Optional[str] = None):
+                cag_cache_file_path: str = DEFAULT_CAG_FILE_PATH):
         """
         Executes the agent with specific Top-K weightings and saves results
         to a unique sub-folder.
@@ -153,6 +154,9 @@ class AgentRunner:
 
     @staticmethod
     def _save_cag_interaction(file_path:str, query: str, answer: str):
+        parent_dir = os.path.dirname(file_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         interaction = {
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "query":query,
@@ -235,7 +239,7 @@ def get_args(parser):
     parser.add_argument('--cag-file-path', type=str, default='cag_interaction.json', help=' path to JSON file used bu --cag-collect (default:cag_interactions.json).')
     parser.add_argument('--cag-cache', action='store_true', help='Enable cache lookup before LLM/tool invocation using previously accepted CAG interactions.')
     parser.add_argument('--cag-cache-threshold', type=float, default=0.92, help='Minimum similarity score (0.0-1.0) required for a cache hit (default: 0.92).')
-    parser.add_argument('--cag-cache-file-path', type=str, default=None, help='Path to cache JSON file. Defaults to --cag-file-path.')
+    parser.add_argument('--cag-cache-file-path', type=str, default=DEFAULT_CAG_FILE_PATH, help='Path to cache JSON file. Defaults to --cag-file-path.')
 
     return parser.parse_args()
 # Original command-line interface remains the entry point
