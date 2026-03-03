@@ -154,7 +154,7 @@ class AgentRunner:
     @staticmethod
     def _save_cag_interaction(file_path:str, query: str, answer: str):
         interaction = {
-            "timstamp_utc": datetime.now(timezone.utc).isoformat(),
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "query":query,
             "answer": answer
         }
