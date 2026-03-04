@@ -47,7 +47,7 @@ class AgentRunner:
                 top_k_govuk: int = 0,
                 cag_collect: bool = False,
                 cag_file_path: str = "cag_interaction.json",
-                cag_cache: bool = False,
+                cag_cache: Optional[CAGQueryCache] = None,
                 cag_cache_threshold: float = 0.90,
                 cag_cache_file_path: str = DEFAULT_CAG_FILE_PATH):
         """
@@ -105,11 +105,6 @@ class AgentRunner:
                 initial_response = agent.process_handoff()
                 print(f"\nAgent: {initial_response}\n")
 
-            cache = None
-            if cag_cache:
-                cache_path = cag_cache_file_path or cag_file_path
-                cache = CAGQueryCache(cache_path)
-
             # Standard interactive loop
             while True:
                 try:
@@ -122,8 +117,8 @@ class AgentRunner:
                     if not user_input:
                         continue
 
-                    if cache is not None:
-                        cache_match = cache.lookup(user_input, threshold=cag_cache_threshold)
+                    if cag_cache is not None:
+                        cache_match = cag_cache.lookup(user_input, threshold=cag_cache_threshold)
                         if cache_match:
                             print(f"\n Onward Journey Agent (cache hit, score={cache_match.score:.3f}): {cache_match.answer}\n")
                             continue
@@ -146,10 +141,10 @@ class AgentRunner:
     def _is_answer_accepted() -> bool:
         while True:
             reply = input("are you happy with this answer? (y/n): ").strip().lower()
-            if reply in {"y", "yes"}:
-                return True
-            if reply in {"n", "no"}:
-                return False
+
+            parsed = {"y": True, "yes": True, "n": False, "no": False}.get(reply)
+            if parsed is not None:
+                return parsed
             print ("Please respond with 'y' or 'n'.")
 
     @staticmethod
@@ -262,9 +257,14 @@ if __name__ == "__main__":
 
         oj_k, gov_k = 2, 5
 
-
         runner(args.mode, handoff_data=default_handoff(), top_k_oj=oj_k, top_k_govuk=gov_k)
     else:
+
+        cag_cache = None
+        if args.cag_cache:
+            cache_path = args.cag_cache_file_path or args.cag_file_path
+            cag_cache = CAGQueryCache(cache_path)
+
         # Default interactive values
         runner(
             args.mode,
@@ -273,7 +273,7 @@ if __name__ == "__main__":
             top_k_govuk=3,
             cag_collect=args.cag_collect,
             cag_file_path=args.cag_file_path,
-            cag_cache=args.cag_cache,
+            cag_cache=cag_cache,
             cag_cache_threshold=args.cag_cache_threshold,
             cag_cache_file_path=args.cag_cache_file_path
             )
