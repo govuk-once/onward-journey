@@ -1,18 +1,24 @@
 import random
 import numpy as np
 import argparse
-import os  # Required for directory management
+import os
 import asyncio
+import json
+
 
 from data                        import vectorStore
 from agents                      import OnwardJourneyAgent, GovUKAgent, hybridAgent
 from loaders                     import load_test_queries
 from metrics                     import clarification_success_gain_metric
+from datetime                    import datetime, timezone
+from typing                      import Optional
+from cag_cache                   import CAGQueryCache
 
 from test import Evaluator
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_KB_PATH = os.path.join(SCRIPT_DIR, "../mock_data/mock_rag_data.csv")
+DEFAULT_CAG_FILE_PATH = os.path.join(SCRIPT_DIR, "data", "cag_interaction.json")
 
 def default_handoff():
     return {'handoff_agent_id': 'GOV.UK Chat', 'final_conversation_history': []}
@@ -34,7 +40,16 @@ class AgentRunner:
 
         self._set_all_seeds(self.seed)
 
-    def __call__(self, run_mode: str, handoff_data: dict, top_k_oj: int = 0, top_k_govuk: int = 0):
+    def __call__(self, 
+                run_mode: str,
+                handoff_data: dict, 
+                top_k_oj: int = 0, 
+                top_k_govuk: int = 0,
+                cag_collect: bool = False,
+                cag_file_path: str = "cag_interaction.json",
+                cag_cache: Optional[CAGQueryCache] = None,
+                cag_cache_threshold: float = 0.90,
+                cag_cache_file_path: str = DEFAULT_CAG_FILE_PATH):
         """
         Executes the agent with specific Top-K weightings and saves results
         to a unique sub-folder.
@@ -102,13 +117,62 @@ class AgentRunner:
                     if not user_input:
                         continue
 
+                    if cag_cache is not None:
+                        cache_match = cag_cache.lookup(user_input, threshold=cag_cache_threshold)
+                        if cache_match:
+                            print(f"\n Onward Journey Agent (cache hit, score={cache_match.score:.3f}): {cache_match.answer}\n")
+                            continue
+
                     response = agent._send_message_and_tools(user_input)
                     response = asyncio.run(response) if asyncio.iscoroutine(response) else response
                     print(f"\n Onward Journey Agent: {response}\n")
 
+                    if cag_collect and self._is_answer_accepted():
+                        self._save_cag_interaction(
+                            file_path=cag_file_path,
+                            query=user_input,
+                            answer=response
+                        )
+                        print(f"Saved interaction to {cag_file_path} 💾\n")
+
                 except KeyboardInterrupt:
                     break
+    @staticmethod
+    def _is_answer_accepted() -> bool:
+        while True:
+            reply = input("are you happy with this answer? (y/n): ").strip().lower()
 
+            parsed = {"y": True, "yes": True, "n": False, "no": False}.get(reply)
+            if parsed is not None:
+                return parsed
+            print ("Please respond with 'y' or 'n'.")
+
+    @staticmethod
+    def _save_cag_interaction(file_path:str, query: str, answer: str):
+        parent_dir = os.path.dirname(file_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+        interaction = {
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "query":query,
+            "answer": answer
+        }
+
+        records = []
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                    if isinstance(loaded, list):
+                        records = loaded
+            except (json.JSONDecodeError, OSError):
+                records = []
+
+        records.append(interaction)
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(records, f, ensure_ascii=False, indent=2)
+    
     def _set_all_seeds(self, seed_value: int):
         random.seed(seed_value)
         np.random.seed(seed_value)
@@ -166,6 +230,11 @@ def get_args(parser):
                         help=f'AWS region to use for the Bedrock client (default: eu-west-2).')
     parser.add_argument('--output_dir', type=str, help='Directory to save test outputs.')
     parser.add_argument('--role_arn', type=str, default=None, help='AWS Role ARN for Bedrock access (if required).')
+    parser.add_argument('--cag-collect', action='store_true', help='Ask for answer acceptance after each reply and save accepted interactions in to a json file')
+    parser.add_argument('--cag-file-path', type=str, default='cag_interaction.json', help=' path to JSON file used bu --cag-collect (default:cag_interactions.json).')
+    parser.add_argument('--cag-cache', action='store_true', help='Enable cache lookup before LLM/tool invocation using previously accepted CAG interactions.')
+    parser.add_argument('--cag-cache-threshold', type=float, default=0.92, help='Minimum similarity score (0.0-1.0) required for a cache hit (default: 0.92).')
+    parser.add_argument('--cag-cache-file-path', type=str, default=DEFAULT_CAG_FILE_PATH, help='Path to cache JSON file. Defaults to --cag-file-path.')
 
     return parser.parse_args()
 # Original command-line interface remains the entry point
@@ -188,8 +257,23 @@ if __name__ == "__main__":
 
         oj_k, gov_k = 2, 5
 
-
         runner(args.mode, handoff_data=default_handoff(), top_k_oj=oj_k, top_k_govuk=gov_k)
     else:
+
+        cag_cache = None
+        if args.cag_cache:
+            cache_path = args.cag_cache_file_path or args.cag_file_path
+            cag_cache = CAGQueryCache(cache_path)
+
         # Default interactive values
-        runner(args.mode, handoff_data=default_handoff(), top_k_oj=3, top_k_govuk=3)
+        runner(
+            args.mode,
+            handoff_data=default_handoff(),
+            top_k_oj=3,
+            top_k_govuk=3,
+            cag_collect=args.cag_collect,
+            cag_file_path=args.cag_file_path,
+            cag_cache=cag_cache,
+            cag_cache_threshold=args.cag_cache_threshold,
+            cag_cache_file_path=args.cag_cache_file_path
+            )
