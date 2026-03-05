@@ -1,279 +1,172 @@
-import random
-import numpy as np
-import argparse
 import os
-import asyncio
 import json
+import random
+import asyncio
+import argparse
+import numpy as np
+from datetime import datetime, timezone
 
+# Internal package imports
+from app.core.data import vectorStore
+from app.core.engine import CAGQueryCache
+from app.evaluation.test import Evaluator
+from app.agents import OnwardJourneyAgent, GovUKAgent, hybridAgent
+from app.evaluation.benchmarking import load_test_queries, clarification_success_gain_metric
 
-from data                        import vectorStore
-from agents                      import OnwardJourneyAgent, GovUKAgent, hybridAgent
-from loaders                     import load_test_queries
-from metrics                     import clarification_success_gain_metric
-from datetime                    import datetime, timezone
-from typing                      import Optional
-from cag_cache                   import CAGQueryCache
-
-from test import Evaluator
-
+# Constants for default paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_KB_PATH = os.path.join(SCRIPT_DIR, "../mock_data/mock_rag_data.csv")
-DEFAULT_CAG_FILE_PATH = os.path.join(SCRIPT_DIR, "data", "cag_interaction.json")
-
-def default_handoff():
-    return {'handoff_agent_id': 'GOV.UK Chat', 'final_conversation_history': []}
+DEFAULT_KB_PATH = os.path.join(SCRIPT_DIR, "app", "resources", "data", "oj_rag_data.csv")
+DEFAULT_CAG_PATH = os.path.join(SCRIPT_DIR, "app", "resources", "data", "cag_interaction.json")
 
 class AgentRunner:
-    def __init__(self, llm_model_id: str, path_to_kb: str, path_to_test_data: str,
-                 aws_region: str, aws_role_arn : str, output_dir: str,
-                 seed: int = 0, agent_type:int = 0, vector_store_model_id: str = 'amazon.titan-embed-text-v2:0'):
+    def __init__(self, args, model_id = "anthropic.claude-3-7-sonnet-20250219-v1:0"):
+        self.args = args
+        self.model_id = model_id
+        self._set_seeds(args.seed)
+        
+        # Initialize Cache if enabled
+        self.cache = CAGQueryCache(args.cag_cache_file_path) if args.cag_cache else None
 
-        self.model_id                  = llm_model_id
-        self.vector_store_model_id     = vector_store_model_id
-        self.path_to_knowledge_base    = path_to_kb
-        self.aws_region                = aws_region
-        self.aws_role_arn              = aws_role_arn
-        self.path_to_test_data         = path_to_test_data
-        self.seed                      = seed
-        self.agent_type                = agent_type
-        self.output_dir                = output_dir
+    def _set_seeds(self, seed: int):
+        """Standardize randomness for reproducibility."""
+        random.seed(seed)
+        np.random.seed(seed)
 
-        self._set_all_seeds(self.seed)
+    def _get_agent(self, vs: vectorStore, handoff_data: dict):
+        """Factory to initialize the requested agent type with correct Top-K values."""
+        agent_mapping = {
+            0: (OnwardJourneyAgent, {"top_K_OJ": self.args.top_k_oj}),
+            1: (GovUKAgent, {"top_K_govuk": self.args.top_k_govuk}),
+            2: (hybridAgent, {"top_K_OJ": self.args.top_k_oj, "top_K_govuk": self.args.top_k_govuk})
+        }
+        
+        agent_cls, extra_params = agent_mapping.get(self.args.agent_type, agent_mapping[0])
+        
+        return agent_cls(
+            handoff_package=handoff_data,
+            vector_store_embeddings=vs.get_embeddings(),
+            vector_store_chunks=vs.get_chunks(),
+            model_name=self.model_id,
+            aws_region=self.args.region,
+            temperature=0.0,
+            **extra_params
+        )
 
-    def __call__(self, 
-                run_mode: str,
-                handoff_data: dict, 
-                top_k_oj: int = 0, 
-                top_k_govuk: int = 0,
-                cag_collect: bool = False,
-                cag_file_path: str = "cag_interaction.json",
-                cag_cache: Optional[CAGQueryCache] = None,
-                cag_cache_threshold: float = 0.90,
-                cag_cache_file_path: str = DEFAULT_CAG_FILE_PATH):
-        """
-        Executes the agent with specific Top-K weightings and saves results
-        to a unique sub-folder.
-        """
-        vs = self._initialize_vector_store()
+    async def run_interactive(self):
+        """Terminal loop for real-time interaction."""
+        vs = vectorStore(file_path=self.args.kb_path)
+        agent = self._get_agent(vs, {'final_conversation_history': []})
 
-        if self.agent_type == 0:
-            print("Initializing OnwardJourneyAgent...")
-            agent = self._initialize_onward_journey_agent(vs, handoff_data, temperature=0.0, top_k_oj=top_k_oj)
-        elif self.agent_type == 1:
-            print("Initializing GovUKAgent...")
-            agent = self._initialize_govuk_agent(handoff_data, temperature=0.0, top_k_govuk=top_k_govuk)
-        else:
-            print("Initializing hybridAgent with both specialists...")
-            agent = self._initialize_hybrid_agent(vs, handoff_data, temperature=0.0, top_k_oj=top_k_oj, top_k_govuk=top_k_govuk)
+        print("\n" + "="*60)
+        print(" AGENT (Interactive Mode) ")
+        print("="*60 + "\n")
 
-        if run_mode == 'test':
-            # Create a unique folder for this specific pair
-            pair_folder_name = f"oj{top_k_oj}_gov{top_k_govuk}"
-            current_run_dir = os.path.join(self.output_dir, pair_folder_name)
-            os.makedirs(current_run_dir, exist_ok=True)
+        while True:
+            try:
+                user_input = input("You: ").strip()
+                if user_input.lower() in ["exit", "quit", "end"]:
+                    print("\n Conversation with Agent ended.👋")
+                    break
+                if not user_input:
+                    continue
 
-            print(f"Executing Test Suite. Results will be saved to: {current_run_dir}")
-            test_queries = load_test_queries(self.path_to_test_data)
-
-            # Pass the new sub-folder to the Evaluator
-            evaluator = Evaluator(agent, test_queries, current_run_dir)
-
-            print(f"Running Forced Mode (K_oj={top_k_oj}, K_gov={top_k_govuk})...")
-            forced_df = evaluator('forced')
-
-            print(f"Running Clarification Mode (K_oj={top_k_oj}, K_gov={top_k_govuk})...")
-            clarification_df = evaluator('clarification')
-
-            gain_metrics = clarification_success_gain_metric(clarification_df, forced_df)
-
-            print(f"CSG Score for {pair_folder_name}: {gain_metrics.get('clarification_success_gain_csg', 0):.4f}")
-
-        elif run_mode == 'interactive':
-            """
-            Interactive terminal loop that mirrors the original functionality
-            but uses the new unified multi-tool logic.
-            """
-            # Display the specialized agent's first response
-            print("\n" + "-" * 100)
-            print("You are now speaking with the Onward Journey Agent.")
-            #print(f"Onward Journey Agent: {first_response}")
-            print("-" * 100 + "\n")
-
-            # Handle handoff if history exists
-            if agent.handoff_package.get('final_conversation_history'):
-                print("Processing context from previous agent...")
-                initial_response = agent.process_handoff()
-                print(f"\nAgent: {initial_response}\n")
-
-            # Standard interactive loop
-            while True:
-                try:
-                    user_input = input("You: ").strip()
-
-                    if user_input.lower() in ["exit", "quit", "end"]:
-                        print("\n👋 Conversation with Onward Journey Agent ended.")
-                        break
-
-                    if not user_input:
+                #Cache lookup (CAG)
+                if self.cache:
+                    match = self.cache.lookup(user_input, threshold=self.args.cag_cache_threshold)
+                    if match:
+                        print(f"\nAgent (Cache Hit - Score {match.score:.2f}):\n{match.answer}\n")
                         continue
 
-                    if cag_cache is not None:
-                        cache_match = cag_cache.lookup(user_input, threshold=cag_cache_threshold)
-                        if cache_match:
-                            print(f"\n Onward Journey Agent (cache hit, score={cache_match.score:.3f}): {cache_match.answer}\n")
-                            continue
+                # LLM / Tool execution
+                response = await agent._send_message_and_tools(user_input)
+                print(f"\nAgent:\n{response}\n")
 
-                    response = agent._send_message_and_tools(user_input)
-                    response = asyncio.run(response) if asyncio.iscoroutine(response) else response
-                    print(f"\n Onward Journey Agent: {response}\n")
+                # CAG collection
+                if self.args.cag_collect and self._is_helpful():
+                    self._save_interaction(user_input, response)
 
-                    if cag_collect and self._is_answer_accepted():
-                        self._save_cag_interaction(
-                            file_path=cag_file_path,
-                            query=user_input,
-                            answer=response
-                        )
-                        print(f"Saved interaction to {cag_file_path} 💾\n")
+            except KeyboardInterrupt:
+                break
 
-                except KeyboardInterrupt:
-                    break
-    @staticmethod
-    def _is_answer_accepted() -> bool:
-        while True:
-            reply = input("are you happy with this answer? (y/n): ").strip().lower()
+    def _is_helpful(self) -> bool:
+        """User feedback loop for cache collection."""
+        return input("Was this answer helpful? (y/n): ").lower().startswith('y')
 
-            parsed = {"y": True, "yes": True, "n": False, "no": False}.get(reply)
-            if parsed is not None:
-                return parsed
-            print ("Please respond with 'y' or 'n'.")
-
-    @staticmethod
-    def _save_cag_interaction(file_path:str, query: str, answer: str):
-        parent_dir = os.path.dirname(file_path)
-        if parent_dir:
-            os.makedirs(parent_dir, exist_ok=True)
-        interaction = {
+    def _save_interaction(self, query: str, answer: str):
+        """Appends accepted interactions to the JSON cache."""
+        path = self.args.cag_file_path
+        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+        
+        record = {
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-            "query":query,
+            "query": query,
             "answer": answer
         }
-
+        
         records = []
-        if os.path.exists(file_path):
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    loaded = json.load(f)
-                    if isinstance(loaded, list):
-                        records = loaded
-            except (json.JSONDecodeError, OSError):
-                records = []
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                try:
+                    records = json.load(f)
+                except:
+                    records = []
+        
+        records.append(record)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(records, f, indent=2, ensure_ascii=False)
+        print(f"Interaction cached to {path} 💾")
 
-        records.append(interaction)
+    def run_test(self):
+        """Batch evaluation mode."""
+        vs = vectorStore(file_path=self.args.kb_path)
+        agent = self._get_agent(vs, {'final_conversation_history': []})
+        
+        pair_folder = f"oj{self.args.top_k_oj}_gov{self.args.top_k_govuk}"
+        run_dir = os.path.join(self.args.output_dir, pair_folder)
+        os.makedirs(run_dir, exist_ok=True)
 
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(records, f, ensure_ascii=False, indent=2)
+        test_queries = load_test_queries(self.args.test_data_path)
+        evaluator = Evaluator(agent, test_queries, run_dir)
+
+        print(f"Running Forced Mode...")
+        forced_df = evaluator('forced')
+
+        print(f"Running Clarification Mode...")
+        clarification_df = evaluator('clarification')
+
+        metrics = clarification_success_gain_metric(clarification_df, forced_df)
+        print(f"\nTest Complete. CSG Score: {metrics.get('clarification_success_gain_csg', 0):.4f}")
+
+def get_args():
+    parser = argparse.ArgumentParser(description="GOV.UK Agent Runner")
+    parser.add_argument('mode', choices=['interactive', 'test'], help='Run mode')
     
-    def _set_all_seeds(self, seed_value: int):
-        random.seed(seed_value)
-        np.random.seed(seed_value)
+    # Paths
+    parser.add_argument('--kb_path', default=DEFAULT_KB_PATH)
+    parser.add_argument('--test_data_path', default='./test_queries.json')
+    parser.add_argument('--output_dir', default='./test_output')
+    
+    # AWS/Agent Config
+    parser.add_argument('--region', default="eu-west-2")
+    parser.add_argument('--agent_type', type=int, default=0, help='0: OJ, 1: GovUK, 2: Hybrid')
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--top_k_oj', type=int, default=3)
+    parser.add_argument('--top_k_govuk', type=int, default=3)
 
-    def _initialize_vector_store(self):
-        return vectorStore(file_path=self.path_to_knowledge_base)
-
-    def _initialize_onward_journey_agent(self, vs: vectorStore, handoff_data: dict, temperature: float, top_k_oj: int):
-        return OnwardJourneyAgent(
-            handoff_package=handoff_data,
-            vector_store_embeddings=vs.get_embeddings(),
-            vector_store_chunks=vs.get_chunks(),
-            model_name=self.model_id,
-            aws_region=self.aws_region,
-            temperature=temperature,
-            top_K_OJ=top_k_oj
-        )
-    def _initialize_govuk_agent(self, handoff_data: dict, temperature: float, top_k_govuk: int):
-        return GovUKAgent(
-            handoff_package=handoff_data,
-            model_name=self.model_id,
-            aws_region=self.aws_region,
-            temperature=temperature,
-            top_K_govuk=top_k_govuk
-        )
-
-    def _initialize_hybrid_agent(self, vs: vectorStore, handoff_data: dict, temperature: float,  top_k_oj: int, top_k_govuk: int):
-        return hybridAgent(
-            handoff_package=handoff_data,
-            vector_store_embeddings=vs.get_embeddings(),
-            vector_store_chunks=vs.get_chunks(),
-            embedding_model=self.vector_store_model_id,
-            model_name=self.model_id,
-            aws_region=self.aws_region,
-            temperature=temperature,
-            top_K_OJ=top_k_oj,
-            top_K_govuk=top_k_govuk
-        )
-
-def get_args(parser):
-    # Required argument for mode
-    parser.add_argument('mode', type=str, choices=['interactive', 'test'],
-                        help='The run mode: "interactive" for chat, or "test" for mass testing.')
-
-    # Required argument for knowledge base path
-    parser.add_argument('--kb_path', type=str, default=DEFAULT_KB_PATH,
-                        help='Path to the knowledge base (e.g., CSV file) for RAG chunks.')
-
-    # Optional argument for test data path (required only for 'test' mode)
-    parser.add_argument('--test_data_path', type=str, default='./test_queries.json',
-                        help='Path to the JSON/CSV file containing test queries and expected answers (required for "test" mode).')
-
-    # Optional argument for overriding the AWS region
-    parser.add_argument('--region', type=str, default="eu-west-2",
-                        help=f'AWS region to use for the Bedrock client (default: eu-west-2).')
-    parser.add_argument('--output_dir', type=str, help='Directory to save test outputs.')
-    parser.add_argument('--role_arn', type=str, default=None, help='AWS Role ARN for Bedrock access (if required).')
-    parser.add_argument('--cag-collect', action='store_true', help='Ask for answer acceptance after each reply and save accepted interactions in to a json file')
-    parser.add_argument('--cag-file-path', type=str, default='cag_interaction.json', help=' path to JSON file used bu --cag-collect (default:cag_interactions.json).')
-    parser.add_argument('--cag-cache', action='store_true', help='Enable cache lookup before LLM/tool invocation using previously accepted CAG interactions.')
-    parser.add_argument('--cag-cache-threshold', type=float, default=0.92, help='Minimum similarity score (0.0-1.0) required for a cache hit (default: 0.92).')
-    parser.add_argument('--cag-cache-file-path', type=str, default=DEFAULT_CAG_FILE_PATH, help='Path to cache JSON file. Defaults to --cag-file-path.')
+    # CAG (Cache) Config
+    parser.add_argument('--cag_collect', action='store_true', help='Enable user feedback collection')
+    parser.add_argument('--cag_file_path', default='cag_interaction.json')
+    parser.add_argument('--cag_cache', action='store_true', help='Enable cache lookup')
+    parser.add_argument('--cag_cache_threshold', type=float, default=0.92)
+    parser.add_argument('--cag_cache_file_path', default=DEFAULT_CAG_PATH)
 
     return parser.parse_args()
-# Original command-line interface remains the entry point
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    args = get_args(parser)
-
-    model_id = "anthropic.claude-3-7-sonnet-20250219-v1:0"
-
-    runner = AgentRunner(
-        llm_model_id=model_id,
-        path_to_kb=args.kb_path,
-        path_to_test_data=args.test_data_path,
-        aws_region=args.region,
-        aws_role_arn=args.role_arn,
-        output_dir=args.output_dir
-    )
-
-    if args.mode == 'test':
-
-        oj_k, gov_k = 2, 5
-
-        runner(args.mode, handoff_data=default_handoff(), top_k_oj=oj_k, top_k_govuk=gov_k)
+    args = get_args()
+    runner = AgentRunner(args)
+    
+    if args.mode == 'interactive':
+        asyncio.run(runner.run_interactive())
     else:
-
-        cag_cache = None
-        if args.cag_cache:
-            cache_path = args.cag_cache_file_path or args.cag_file_path
-            cag_cache = CAGQueryCache(cache_path)
-
-        # Default interactive values
-        runner(
-            args.mode,
-            handoff_data=default_handoff(),
-            top_k_oj=3,
-            top_k_govuk=3,
-            cag_collect=args.cag_collect,
-            cag_file_path=args.cag_file_path,
-            cag_cache=cag_cache,
-            cag_cache_threshold=args.cag_cache_threshold,
-            cag_cache_file_path=args.cag_cache_file_path
-            )
+        runner.run_test()
