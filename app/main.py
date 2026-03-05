@@ -23,7 +23,7 @@ class AgentRunner:
         self.args = args
         self.model_id = model_id
         self._set_seeds(args.seed)
-        
+
         # Initialize Cache if enabled
         self.cache = CAGQueryCache(args.cag_cache_file_path) if args.cag_cache else None
 
@@ -39,9 +39,9 @@ class AgentRunner:
             1: (GovUKAgent, {"top_K_govuk": self.args.top_k_govuk}),
             2: (hybridAgent, {"top_K_OJ": self.args.top_k_oj, "top_K_govuk": self.args.top_k_govuk})
         }
-        
+
         agent_cls, extra_params = agent_mapping.get(self.args.agent_type, agent_mapping[0])
-        
+
         return agent_cls(
             handoff_package=handoff_data,
             vector_store_embeddings=vs.get_embeddings(),
@@ -96,13 +96,13 @@ class AgentRunner:
         """Appends accepted interactions to the JSON cache."""
         path = self.args.cag_file_path
         os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
-        
+
         record = {
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "query": query,
             "answer": answer
         }
-        
+
         records = []
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
@@ -110,7 +110,7 @@ class AgentRunner:
                     records = json.load(f)
                 except:
                     records = []
-        
+
         records.append(record)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(records, f, indent=2, ensure_ascii=False)
@@ -120,7 +120,7 @@ class AgentRunner:
         """Batch evaluation mode."""
         vs = vectorStore(file_path=self.args.kb_path)
         agent = self._get_agent(vs, {'final_conversation_history': []})
-        
+
         pair_folder = f"oj{self.args.top_k_oj}_gov{self.args.top_k_govuk}"
         run_dir = os.path.join(self.args.output_dir, pair_folder)
         os.makedirs(run_dir, exist_ok=True)
@@ -140,12 +140,12 @@ class AgentRunner:
 def get_args():
     parser = argparse.ArgumentParser(description="GOV.UK Agent Runner")
     parser.add_argument('mode', choices=['interactive', 'test'], help='Run mode')
-    
+
     # Paths
     parser.add_argument('--kb_path', default=DEFAULT_KB_PATH)
     parser.add_argument('--test_data_path', default='./test_queries.json')
     parser.add_argument('--output_dir', default='./test_output')
-    
+
     # AWS/Agent Config
     parser.add_argument('--region', default="eu-west-2")
     parser.add_argument('--agent_type', type=int, default=0, help='0: OJ, 1: GovUK, 2: Hybrid')
@@ -165,7 +165,7 @@ def get_args():
 if __name__ == "__main__":
     args = get_args()
     runner = AgentRunner(args)
-    
+
     if args.mode == 'interactive':
         asyncio.run(runner.run_interactive())
     else:

@@ -1,9 +1,9 @@
-import os 
-import re 
-import json 
-import uuid 
+import os
+import re
+import json
+import uuid
 import PureCloudPlatformClientV2
-from typing import Dict, Any, List 
+from typing import Dict, Any, List
 from PureCloudPlatformClientV2.rest import ApiException
 
 class GenesysServiceDiscovery:
@@ -40,14 +40,14 @@ class GenesysServiceDiscovery:
                 return {}
 
             flow_id = deployment.flow.id
-            
+
             # Get flow and check for a published version
             flow_data = self.arch_api.get_flow(flow_id)
             if not flow_data or not getattr(flow_data, 'published_version', None):
                 return {}
 
             version_id = flow_data.published_version.id
-            
+
             #  Get configuration - if this fails, catch it in the except block
             return self.arch_api.get_flow_version_configuration(flow_id, version_id)
 
@@ -79,7 +79,7 @@ class GenesysServiceDiscovery:
                     # Use get() and check types to avoid crashes
                     ref = cases[0].get('value', {}).get('metaData', {}).get('references', [{}])[0]
                     field_name = ref.get('name')
-                    
+
                     if field_name:
                         options = [
                             c['value']['config']['==']['operands'][1]['lit']['text']
