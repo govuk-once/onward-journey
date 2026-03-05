@@ -1,9 +1,9 @@
-import os 
-import boto3 
+import os
+import boto3
 import numpy as np
 from opensearchpy             import OpenSearch
 import app.integrations as integrations_registry
-import app.core.tools_registry as tools_registry 
+import app.core.tools_registry as tools_registry
 from app.agents.base import BaseAgent, HandOffMixin, QueryEmbeddingMixin, GovUKSearchMixin, OJSearchMixin, LiveChatMixin, ServiceTriageQMixin
 
 class GovUKAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, GovUKSearchMixin):

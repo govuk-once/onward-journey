@@ -3,7 +3,7 @@ import time
 import boto3
 import numpy as np
 import pandas as pd
-from typing import List, Optional 
+from typing import List, Optional
 from pydantic                 import BaseModel
 
 def df_to_text_chunks(df):

@@ -31,9 +31,9 @@ class PromptGuidance:
             return ""
         with open(self.policy_path, "r", encoding="utf-8") as f:
             return f.read().strip()
-        
+
     def build_style_brief(self, latest_user_prompt: str, history: List[dict]) -> str:
-       # parameters are kept for interface compatability 
+       # parameters are kept for interface compatability
         _ = latest_user_prompt
         _ = history
         parts: List[str] = []
@@ -42,7 +42,7 @@ class PromptGuidance:
             parts.append("## OJ tool Interaction Guidance (soft)\n" + self.policy_text)
 
         return "\n\n".join(parts).strip()
-    
+
     def compose_system_instruction(
             self,
             base_system_instruction: str,
@@ -53,7 +53,7 @@ class PromptGuidance:
 
         if not style_brief:
             return base_system_instruction
-        
+
         priority = (
             "## Priority Order\n"
             "1) Saftey and policy compliance\n"
@@ -62,7 +62,7 @@ class PromptGuidance:
             "4) Style alignment from guidance\n"
         )
         return f"{base_system_instruction}\n\n{priority}\n\n{style_brief}".strip()
-    
+
 @dataclass
 class CacheMatch:
     answer: str

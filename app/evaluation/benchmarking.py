@@ -1,7 +1,7 @@
 import os
 import json
 import pandas as pd
-import seaborn as sns 
+import seaborn as sns
 import matplotlib.pyplot as plt
 from typing import Any, Dict, List
 

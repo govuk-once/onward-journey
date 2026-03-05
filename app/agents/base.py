@@ -169,7 +169,7 @@ class BaseAgent:
         while True:
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
-                "system": 
+                "system":
               self.system_instruction,
                 "messages": self.history,
                 "max_tokens": 4096,
