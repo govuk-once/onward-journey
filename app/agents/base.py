@@ -63,9 +63,9 @@ class LiveChatMixin:
     " Capability to initiate live handoff. Expects tools library to have named functions."
     def _get_live_chat_registry(self):
             return {
-                "connect_to_live_chat_MOJ": live_registry.connect_to_moj,
+                "connect_to_live_chat_moj": live_registry.connect_to_moj,
                 "connect_to_live_chat_immigration_and_visas": live_registry.connect_to_immigration_and_visas,
-                "connect_to_live_chat_HMRC_pensions_forms_and_returns": live_registry.connect_to_hmrc
+                "connect_to_live_chat_hmrc": live_registry.connect_to_hmrc
             }
 
 class HandOffMixin:
@@ -212,13 +212,13 @@ class BaseAgent:
                         # Triage complete: Inject extracted data and run the tool
                         args['triage_data'] = triage_report.get('extracted', {})
                         func = self.available_tools[tool_name]
-                        if func.__module__ == 'tools':
+                        if 'app.integrations' in func.__module__:
                             args['history'] = deepcopy(self.history)
                         out = await func(**args) if asyncio.iscoroutinefunction(func) else func(**args)
                 else:
                     # Standard tool execution logic
                     func = self.available_tools[tool_name]
-                    if func.__module__ == 'tools':
+                    if 'app.integrations' in func.__module__:
                         args['history'] = deepcopy(self.history)
                     out = await func(**args) if asyncio.iscoroutinefunction(func) else func(**args)
 
