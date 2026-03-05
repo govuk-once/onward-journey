@@ -3,12 +3,16 @@ from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from pathlib import Path
+from dotenv import load_dotenv
 from app.core.data import vectorStore
+
+env_path = Path(__file__).parent.parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
+
 from app.agents.factory import OnwardJourneyAgent
 
-from dotenv import load_dotenv
 
-load_dotenv()
 
 
 def example_handoff_pension_schemes_nohelp():
