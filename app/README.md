@@ -78,6 +78,32 @@ Use this to see the agent handle the initial handoff and subsequent chat turns.
 ```shell
 gds-cli aws once-onwardjourney-development-admin -- uv run main.py interactive
 ```
+#### A1. Interactive Mode with CAG (Collection + Cache)
+
+CAG supports:
+- collecting accepted Q&A pairs into JSON during interactive runs
+- reusing previous accepted answers via similarity-based cache lookup before tool/LLM calls
+
+Example:
+
+```shell
+gds-cli aws once-onwardjourney-development-admin -- uv run main.py interactive \
+  --cag-collect \
+  --cag-file-path ./data/cag_interaction.json \
+  --cag-cache \
+  --cag-cache-threshold 0.92 \
+  --cag-cache-file-path ./data/cag_interaction.json
+```
+
+CAG flags:
+
+| Flag | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--cag-collect` | boolean | `False` | After each answer in interactive mode, asks for acceptance (`y/n`) and stores accepted interactions. |
+| `--cag-file-path` | string | `cag_interaction.json` | JSON file used to save accepted interactions when `--cag-collect` is enabled. |
+| `--cag-cache` | boolean | `False` | Enables cache lookup before LLM/tool invocation in interactive mode. |
+| `--cag-cache-threshold` | float | `0.92` | Minimum similarity score (`0.0`-`1.0`) required for a cache hit. |
+| `--cag-cache-file-path` | string | `app/data/cag_interaction.json` | JSON file used as the cache source when `--cag-cache` is enabled. |
 
 #### B. Testing Mode (Performance Analysis)
 
