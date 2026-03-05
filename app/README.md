@@ -45,7 +45,7 @@ GENESYS_DEPLOYMENT_ID=your_deployment_id
 GENESYS_REGION=euw2.pure.cloud
 
 # Local Knowledge Base
-KB_PATH=../mock_data/mock_rag_data.csv
+KB_PATH=../app/resources/data/oj_rag_data.csv
 ```
 ### 2. Data Preparation
 
@@ -88,7 +88,7 @@ gds-cli aws once-onwardjourney-development-admin -- uv run main.py test \
     --output_dir path/to/output \
     --test_data ./ \
 uv run main.py test \
-    --kb_path ../mock_data/mock_rag_data.csv \
+    --kb_path ../mock_data/oj_rag_data.csv \
     --test_data ../test_data/prototype2/test_queries_large_80.json \
 ```
 
