@@ -41,19 +41,23 @@ OPENSEARCH_USERNAME=your_username
 OPENSEARCH_PASSWORD=your_password
 
 # Genesys Cloud (Live Agent Handoff)
-GENESYS_DEPLOYMENT_ID=your_deployment_id
+GENESYS_CLOUD_CLIENT_ID=your_id
+GENESYS_CLOUD_CLIENT_SECRET=your_secret
+GENESYS_DEPLOYMENT_ID_MOJ=your_deployment_id
+GENESYS_DEPLOYMENT_ID_HMRC=your_deployment_id
+GENESYS_DEPLOYMENT_ID_IMMIGRATION=your_deployment_id
 GENESYS_REGION=euw2.pure.cloud
 
 # Local Knowledge Base
-KB_PATH=../mock_data/mock_rag_data.csv
+KB_PATH=../app/resources/data/oj_rag_data.csv
 ```
-### 2. Data Preparation
+### 3. Data Preparation
 
-You will need a mock CSV file to simulate your internal data source for the RAG tool.
+You will need a CSV file to simulate your internal data source for the RAG tool.
 
-Mock data source files should be added to `../mock_data`. This will ensure that the file is added as an object to the datasets S3 bucket following a Terraform build (for future prototyping use).
+Mock data source files should be added to `app/resources/data/oj_rag_data.csv`. This will ensure that the file is added as an object to the datasets S3 bucket following a Terraform build (for future prototyping use).
 
-`mock_rag_data.csv` has already been added to the `mock_data` folder.
+`oj_rag_data.csv` has already been added to the `app/resources/data` folder.
 
 It contains the columns expected by the df_to_text_chunks function in data.py: `uid`, `service_name`, `department`, `phone_number`, `topic`, `user_type`, `tags`, `url`, `last_update`, and `description`.
 
@@ -68,7 +72,7 @@ uid,service_name,department,phone_number,topic,user_type,tags,url,last_update,de
 
 
 
-### 3. Usage
+### 4. Usage
 
 #### A. Interactive Mode (Conversation Demo)
 
@@ -76,35 +80,9 @@ Use this to see the agent handle the initial handoff and subsequent chat turns.
 (Run from ../onward-journey/app)
 
 ```shell
-gds-cli aws once-onwardjourney-development-admin -- uv run main.py interactive
+gds-cli aws once-onwardjourney-development-admin -- uv run main.py interactive --agent_type 0
 ```
-#### A1. Interactive Mode with CAG (Collection + Cache)
-
-CAG supports:
-- collecting accepted Q&A pairs into JSON during interactive runs
-- reusing previous accepted answers via similarity-based cache lookup before tool/LLM calls
-
-Example:
-
-```shell
-gds-cli aws once-onwardjourney-development-admin -- uv run main.py interactive \
-  --cag-collect \
-  --cag-file-path ./data/cag_interaction.json \
-  --cag-cache \
-  --cag-cache-threshold 0.92 \
-  --cag-cache-file-path ./data/cag_interaction.json
-```
-
-CAG flags:
-
-| Flag | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `--cag-collect` | boolean | `False` | After each answer in interactive mode, asks for acceptance (`y/n`) and stores accepted interactions. |
-| `--cag-file-path` | string | `cag_interaction.json` | JSON file used to save accepted interactions when `--cag-collect` is enabled. |
-| `--cag-cache` | boolean | `False` | Enables cache lookup before LLM/tool invocation in interactive mode. |
-| `--cag-cache-threshold` | float | `0.92` | Minimum similarity score (`0.0`-`1.0`) required for a cache hit. |
-| `--cag-cache-file-path` | string | `app/data/cag_interaction.json` | JSON file used as the cache source when `--cag-cache` is enabled. |
-
+Note: --agent_type 0 uses the Onward Journey Agent, 1 uses GovUK, and 2 is Hybrid.
 #### B. Testing Mode (Performance Analysis)
 
 Use this to run the agent against a suite of pre-defined queries and generate the performance report and confusion matrix plot.
@@ -114,7 +92,7 @@ gds-cli aws once-onwardjourney-development-admin -- uv run main.py test \
     --output_dir path/to/output \
     --test_data ./ \
 uv run main.py test \
-    --kb_path ../mock_data/mock_rag_data.csv \
+    --kb_path ../mock_data/oj_rag_data.csv \
     --test_data ../test_data/prototype2/test_queries_large_80.json \
 ```
 
@@ -124,7 +102,7 @@ You will need two terminal windows; one to run the backend and the other for the
 
 In the first, navigate to the "app" folder and run:
 ```shell
-gds-cli aws once-onwardjourney-development-admin -- uv run uvicorn chat_server:app --reload
+gds-cli aws once-onwardjourney-development-admin -- uv run uvicorn app.api.server:app --reload
 ```
 In the second, navigate to the "frontend" folder and run:
 ```shell
@@ -134,7 +112,7 @@ Once these have been run and are hosted, go to a browser and go to http://localh
 
 #### Key Components and AWS Integration
 
-##### 1. Bedrock Integration (`agents.py`)
+##### 1. Bedrock Integration (`base.py`)
 
 - **Client Initialization**: The agent uses `boto3.client('bedrock-runtime', region_name=...)` for secure authentication and connection to the Bedrock service. You can pass the ARN of an IAM role to assume for calls to Bedrock via the `--role_arn` command line argument
 
@@ -142,22 +120,31 @@ Once these have been run and are hosted, go to a browser and go to http://localh
 
 - **Inference Pipeline**: The agent uses `client.invoke_model()` to send requests. The tool-use logic involves a multi-step loop where the agent sends the prompt, receives the tool call, executes the local Python `query_csv_rag` function, and sends the results back to Bedrock as a subsequent user message for final answer generation.
 
-##### 2. RAG Implementation (`agents.py` and `data.py`)
+##### 2. RAG Implementation (`base.py, factory.py` and `data.py`)
 
-The RAG tool (query_internal_kb) remains the core component that operates locally to:
+The RAG tools are the core component that operates locally to:
 
 - Encode the user query using `Amazon Titan Text Embeddings v2` model.
 
-- Performs Cosine Similarity against pre-computed embeddings.
+- Performs Cosine Similarity against pre-computed embeddings (transformed oj_rag_data.csv data).
 
-- Augment the LLM's prompt with the top 3 relevant text chunks.
+- Augment the LLM's prompt with the top k relevant text chunks for a given Agent.
 
-##### 3. Expected Output Flow
+##### 3. Mixin-Based Agents
 
-- **Agent Initialization**: Prints confirmation of successful boto3 client connection and tool declaration.
+Instead of one file, capabilities are injected into agents using Mixins. For example, `OnwardJourneyAgent`
+inherits from `OJSearchMixin` to gain local RAG powers and `LiveChatMixin` for Genesys integration.    
 
-- **Handoff Processing**: The agent sends the initial conversation context to the Bedrock model.
+##### 4. Tool-Use Loop (Bedrock)
+The system follows a reactive loop:
 
-- **First Response**: The Bedrock model calls its tools (depending on strategy - e.g. govuk kb, oj kb or both), receives the RAG context, and generates a specialized, grounded response.
+1. User Prompt sent to Bedrock.
 
-- **Interactive Loop**: The console enters an interactive chat where each user turn triggers a new invoke_model call, potentially engaging the RAG tool.
+2. Bedrock requests Tool Call (e.g., `query_internal_kb`).
+ 
+3. Local Execution: The Python code queries the CSV/OpenSearch.
+
+4. Final Synthesis: Results are fed back to Bedrock to produce a natural language answer.
+
+##### 5. Cache Augmented Generation (CAG)
+The `CAGQueryCache` object found in `engine.py` uses TF-IDF vectorization to check if a similar question has been answered before, reducing LLM costs and latency for common queries. 

@@ -1,6 +1,6 @@
 Apply these as soft interaction prefrences for product behaviour:
 
-- be polite and respectful 
+- be polite and respectful
 - confirm important assumptions in plain langauge
 - prefer practical next steps over abstract explanantions
 - be transparent with infromation you need clarity on and avoid guessing or assuming

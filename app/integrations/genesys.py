@@ -1,10 +1,9 @@
 import os
-import json
 import re
+import json
 import uuid
 import PureCloudPlatformClientV2
-
-from typing import List, Dict, Any
+from typing import Dict, Any, List
 from PureCloudPlatformClientV2.rest import ApiException
 
 class GenesysServiceDiscovery:
@@ -30,58 +29,64 @@ class GenesysServiceDiscovery:
             print(f"Auth Failure: {e}")
 
     def get_config_from_deployment(self, deployment_id: str) -> dict:
-        """
-        Traverses: Deployment -> Config -> Messaging Flow -> Published Version Schema
-        to identify required triage fields for the AI Agent.
-        """
+        """Safe traversal: Deployment -> Flow -> Version -> Configuration"""
         if not deployment_id:
             return {}
 
         try:
-            # 1. Get deployment to find the configuration reference
+            # Get deployment and check for flow existence
             deployment = self.web_api.get_webdeployments_deployment(deployment_id)
-            flow_id = deployment.flow.id
-            flow_data = self.arch_api.get_flow(flow_id)
-            version_id = flow_data.published_version.id
-            config = self.arch_api.get_flow_version_configuration(flow_id, version_id)
+            if not deployment or not getattr(deployment, 'flow', None):
+                return {}
 
-            return config
+            flow_id = deployment.flow.id
+
+            # Get flow and check for a published version
+            flow_data = self.arch_api.get_flow(flow_id)
+            if not flow_data or not getattr(flow_data, 'published_version', None):
+                return {}
+
+            version_id = flow_data.published_version.id
+
+            #  Get configuration - if this fails, catch it in the except block
+            return self.arch_api.get_flow_version_configuration(flow_id, version_id)
 
         except ApiException as e:
-            print(f"Genesys API Error ({e.status}): {e.body}")
+            # Log the 404/403 but return empty so the app continues
+            print(f"Genesys API Error ({e.status}) for ID: {deployment_id}")
             return {}
         except Exception as e:
             print(f"Discovery Traversal Error: {e}")
             return {}
 
     def extract_triage_data(self, config: dict):
-        """
-        Dynamically extracts ALL triage fields, their specific options,
-        and the relevant prompts from the Genesys config.
-        """
-        actions = config.get('flowSequenceItemList', [{}])[0].get('actionList', [])
+        """Safely extracts triage fields, returning defaults if config is empty."""
+        # If config is empty, return a 'no triage required' structure
+        if not config:
+            return {"missing": [], "field_options": {}, "prompt": ""}
 
-        # We now store fields as a dictionary to map each field to its specific options
+        # Safely navigate the JSON structure using .get()
+        flow_items = config.get('flowSequenceItemList', [])
+        actions = flow_items[0].get('actionList', []) if flow_items else []
+
         triage_fields = {}
         global_prompt = ""
 
-        # 1. Iterate through all actions to find all Switches (Decision points)
         for action in actions:
             if action.get('__type') == 'SwitchAction':
-                # Extract the variable name being checked
                 cases = action.get('cases', [])
                 if cases:
-                    ref = cases[0]['value']['metaData']['references'][0]
+                    # Use get() and check types to avoid crashes
+                    ref = cases[0].get('value', {}).get('metaData', {}).get('references', [{}])[0]
                     field_name = ref.get('name')
 
-                    # Extract all possible options for THIS specific field
-                    options = [
-                        c['value']['config']['==']['operands'][1]['lit']['text']
-                        for c in cases if 'lit' in str(c)
-                    ]
-                    triage_fields[field_name] = options
+                    if field_name:
+                        options = [
+                            c['value']['config']['==']['operands'][1]['lit']['text']
+                            for c in cases if 'lit' in str(c)
+                        ]
+                        triage_fields[field_name] = options
 
-            # 2. Collect the human-readable prompt(s)
             elif action.get('__type') == 'SendResponseAction':
                 text = action.get('messageBody', {}).get('text', "")
                 if text:
@@ -89,7 +94,7 @@ class GenesysServiceDiscovery:
 
         return {
             "missing": list(triage_fields.keys()),
-            "field_options": triage_fields, # Specific options per field
+            "field_options": triage_fields,
             "prompt": global_prompt.strip()
         }
 
@@ -127,41 +132,12 @@ async def connect_to_immigration_and_visas(reason: str, history: List[Dict[str, 
 async def connect_to_hmrc(reason: str, history: List[Dict[str, Any]], triage_data: Dict[str, Any] = {}, **kwargs):
     return await initiate_live_handoff(reason, 'GENESYS_DEPLOYMENT_ID_PENSIONS_FORMS_AND_RETURNS', history, triage_data)
 
-def get_internal_kb_definition() -> List[Dict[str, Any]]:
-    return [{
-        "name": "query_internal_kb",
-        "description": "Search specialized internal Onward Journey data for guidance.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-            "required": ["query"],
-        }
-    }]
-
-def get_govuk_definitions() -> List[Dict[str, Any]]:
-    return [{
-        "name": "query_govuk_kb",
-        "description": "Search public GOV.UK policy and legislation.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-            "required": ["query"],
-        }
-    }]
-
 def get_triage_data():
 
     department_data = {0: {"name" : "moj", "description": "Ministry of Justice", "deployment_id": os.getenv("GENESYS_DEPLOYMENT_ID_MOJ")},
                    1: {"name": "immigration_and_visas", "description": "Immigration and visas", "deployment_id": os.getenv("GENESYS_DEPLOYMENT_ID_IMMIGRATION")},
                    2: {"name": "hmrc", "description": "Pensions, forms and returns", "deployment_id": os.getenv("GENESYS_DEPLOYMENT_ID_PENSIONS_FORMS_AND_RETURNS")}}
 
-    # if the crendentials are not present return empty metadata and skip APi call.
-    client_id = os.getenv("GENESYS_CLOUD_CLIENT_ID")
-    client_secret = os.getenv("GENESYS_CLOUD_CLIENT_SECRET")
-    if not client_id or not client_secret:
-        for key in department_data:
-                department_data[key]["triage_data"] = {"missing": [], "field_options": {}, "prompt": ""}
-        return department_data
     discovery = GenesysServiceDiscovery()
 
     for key, dept in department_data.items():
@@ -172,9 +148,6 @@ def get_triage_data():
     return department_data
 
 def get_live_chat_definitions() -> List[Dict[str, Any]]:
-    # without gensys creds disable live chat tools to avoid unusable tool calls
-    if not os.getenv ("GENESYS_CLOUD_CLIENT_ID") or not os.getenv("GENESYS_CLOUD_CLIENT_SECRET"):
-        return []
 
     tools_list = []
 

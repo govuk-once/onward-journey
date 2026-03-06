@@ -21,28 +21,6 @@
     agentId?: string;
   }
 
-
-  interface Message {
-    id: string;
-    user: string;
-    message: string;
-    isSelf: boolean;
-    timestamp?: string;
-    agentId?: string;
-  }
-
-
-  interface Message {
-    id: string;
-    user: string;
-    message: string;
-    isSelf: boolean;
-    timestamp?: string;
-    agentId?: string;
-  }
-
-
-
   // --- State ---
   let scrollContainer: HTMLElement | undefined = $state();
 
