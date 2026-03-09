@@ -4,7 +4,8 @@ import pandas as pd
 from typing          import List, Dict, Any
 from sklearn.metrics import confusion_matrix
 from app.agents.base         import BaseAgent
-from helpers         import extract_and_standardize_phone, get_encoded_labels_and_mapping
+from app.evaluation.test import get_encoded_labels_and_mapping
+from app.core.data         import extract_and_standardize_phone
 from app.evaluation.benchmarking        import save_test_results, plot_uid_confusion_matrix
 
 class Evaluator:
