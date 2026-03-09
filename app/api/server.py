@@ -1,11 +1,29 @@
 import os
+from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
-from agents import OnwardJourneyAgent
-from handoff_examples import example_handoff_pension_schemes_nohelp
-from data import vectorStore
+from pathlib import Path
+from dotenv import load_dotenv
+from app.core.data import vectorStore
+
+env_path = Path(__file__).parent.parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
+
+from app.agents.factory import OnwardJourneyAgent
+
+
+
+
+def example_handoff_pension_schemes_nohelp():
+    return {'handoff_agent_id': 'GOV.UK Chat',
+            'final_conversation_history' : [{'index': 1,
+                                             'role' : 'user',
+                                             'text' : "I'm trying to find the line for Pension Schemes."},
+            {'index' : 2, 'role' : 'agent', 'text' : 'I don\t have the specific phone number for HMRC Pension Schemes Services in the guidance provided.'
+             'The guidance shows that you can contact HMRC Pension Schemes Services by: using the online contact form writing to: Pension Schemes Services, HM Revenue and Customs,'
+             'BX9 1GH, United Kingdom. You can find phone contact details for other HMRC services on the Contact HMRC page. GOV.UK Chat can make mistakes.'
+             'Check GOV.UK pages for important information. GOV.UK pages used in this answer (links open in a new tab)'},]}
 
 app = FastAPI()
 
