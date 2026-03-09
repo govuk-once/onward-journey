@@ -21,7 +21,7 @@ class PromptGuidance:
             policy_path: Optional[str] = None,
     ):
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        prompts_dir = os.path.join(base_dir, "app", "resources", "data")
+        prompts_dir = os.path.join(base_dir, "resources", "data")
         self.policy_path = policy_path or os.path.join(prompts_dir, "prompt_policy.md")
 
         self.policy_text = self._load_policy()
