@@ -21,6 +21,30 @@
     agentId?: string;
   }
 
+// --- New State for Capability Gating ---
+let ojaEnabled = $state(false);
+
+let triageDisplay = $state({
+  active_service: "None",
+  collected: {},
+  all_required: []
+});
+
+// --- New Toggle Action ---
+async function toggleOjaCapability() {
+  const nextState = !ojaEnabled;
+  try {
+    const res = await fetch(`http://localhost:8000/agent/toggle?enabled=${nextState}`, {
+      method: "POST"
+    });
+    if (res.ok) {
+      ojaEnabled = nextState;
+    }
+  } catch (err) {
+    console.error("Failed to toggle OJA:", err);
+  }
+}
+
   // --- State ---
   let scrollContainer: HTMLElement | undefined = $state();
 
@@ -83,7 +107,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
       const data = await res.json();
       chatMessages = [...chatMessages, {
         message: data.summary || "I'm back. How can I help you further?",
-        user: "GOV.UK Onward Journey Agent",
+        user: "GOV.UK Chat",
         isSelf: false,
         id: uuid()
       }];
@@ -107,7 +131,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
       const data = await res.json();
       chatMessages = [...chatMessages, {
         message: data.response,
-        user: "GOV.UK Onward Journey Agent",
+        user: "GOV.UK Chat",
         isSelf: false,
         id: uuid()
       }];
@@ -210,53 +234,72 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
     };
   }
 
-  async function handleSendMessage(userText: string) {
-    if (!userText.trim() || isLoading) return;
-    chatMessages = [...chatMessages, { message: userText, user: "You", isSelf: true, id: uuid() }];
+async function handleSendMessage(userText: string) {
+  if (!userText.trim() || isLoading) return;
+  chatMessages = [...chatMessages, { message: userText, user: "You", isSelf: true, id: uuid() }];
 
-    if (isLiveChat && socket?.readyState === 1) {
-      socket.send(JSON.stringify({
-        action: "onMessage",
-        token: sessionToken,
-        message: { type: "Text", text: userText }
-      }));
-      return;
-    }
-
-    isLoading = true;
-    try {
-      const res = await fetch("http://localhost:8000/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText })
-      });
-      const data = await res.json();
-      const responseText = data.response;
-
-      if (responseText?.includes("initiate_live_handoff")) {
-        const jsonStart = responseText.indexOf('{');
-        const jsonEnd = responseText.lastIndexOf('}') + 1;
-        const config: GenesysHandoff = JSON.parse(responseText.substring(jsonStart, jsonEnd));
-        chatMessages = [...chatMessages, { message: "Transferring to a live agent...", user: "System", isSelf: false, id: uuid() }];
-        console.log("Handoff Config:", config);
-        console.log("Extracted Visa Type:", config.customAttributes?.["Task.VisaType"]);
-
-        setupGenesysSocket(config);
-      } else {
-        chatMessages = [...chatMessages, {
-          message: responseText,
-          user: "GOV.UK Onward Journey Agent",
-          isSelf: false,
-          id: uuid()
-        }];
-      }
-    } catch {
-      chatMessages = [...chatMessages, { message: "Connection error.", user: "System", isSelf: false, id: uuid() }];
-    } finally {
-      isLoading = false;
-    }
+  if (isLiveChat && socket?.readyState === 1) {
+    // Standard Live Chat forwarding [cite: 49]
+    socket.send(JSON.stringify({ action: "onMessage", token: sessionToken, message: { type: "Text", text: userText } }));
+    return;
   }
+
+  isLoading = true;
+  
+  // CUSTOM LOGIC: If Onward Journey Tool is OFF, simulate the GOV.UK Chat Beta response
+  if (!ojaEnabled) {
+    setTimeout(() => {
+      chatMessages = [...chatMessages, {
+        message: "I don't have the specific phone number for HMRC Pension Schemes Services in the guidance provided.The guidance shows that you \
+    'can contact HMRC Pension Schemes Services by: using the online contact form writing to: Pension Schemes Services, HM Revenue and Customs, \
+    'BX9 1GH, United Kingdom. You can find phone contact details for other HMRC services on the Contact HMRC page. GOV.UK Chat can make mistakes. \
+    'Check GOV.UK pages for important information. GOV.UK pages used in this answer (links open in a new tab)'",
+        user: "GOV.UK Chat",
+        isSelf: false,
+        id: uuid()
+      }];
+      isLoading = false;
+    }, 800);
+    return;
+  }
+
+  // --- Standard logic for when OJA is ON ---
+  try {
+    const res = await fetch("http://localhost:8000/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: userText })
+    });
+    const data = await res.json();
+
+    if (data.debug) {
+      triageDisplay = data.debug;
+    }
+    
+    // Handle handoff signals if OJA provides them
+    if (data.response?.includes("initiate_live_handoff")) {
+      const jsonStart = data.response.indexOf('{');
+      const jsonEnd = data.response.lastIndexOf('}') + 1;
+      const config = JSON.parse(data.response.substring(jsonStart, jsonEnd));
+      setupGenesysSocket(config);
+    } else {
+      chatMessages = [...chatMessages, {
+        message: data.response,
+        user: "GOV.UK Chat",
+        isSelf: false,
+        id: uuid()
+      }];
+    }
+  } catch {
+    chatMessages = [...chatMessages, { message: "Connection error.", user: "System", isSelf: false, id: uuid() }];
+  } finally {
+    isLoading = false;
+  }
+}
 </script>
+
+
+
 
 <main class="app-conversation-layout__main">
   {#if isLiveChat}
@@ -275,53 +318,43 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
     </div>
   {/if}
 
-  <div bind:this={scrollContainer} use:autoScroll class="app-conversation-layout__wrapper app-conversation-layout__width-restrictor">
-
-    {#if handoffPackage.final_conversation_history.length > 0}
-      <details class="govuk-details handoff-details">
-        <summary class="govuk-details__summary">
-          <span class="govuk-details__summary-text">View Previous Conversation (GOV.UK Chat)</span>
-        </summary>
-        <div class="govuk-details__text handoff-dropdown-container">
-          <div class="history-list">
-            {#each handoffPackage.final_conversation_history as history, i (i)}
-              <p class="govuk-body-s">
-                <strong>{history.role === 'user' ? 'User' : 'GOV.UK Chat'}:</strong>
-                {history.content[0].text}
-              </p>
-            {/each}
-          </div>
-          <div class="govuk-button-group govuk-!-margin-top-2">
-            {#if !handoffProcessed}
-              <button class="govuk-button govuk-button--small" onclick={triggerHandoffAnalysis} disabled={isLoading}>
-                {isLoading ? 'Analyzing...' : 'Trigger Onward Journey'}
-              </button>
-            {:else}
-              <strong class="govuk-tag govuk-tag--blue">Context Shared</strong>
-            {/if}
-          </div>
+<div bind:this={scrollContainer} use:autoScroll class="app-conversation-layout__wrapper app-conversation-layout__width-restrictor">
+  <div class="message-feed">
+    {#each chatMessages as m (m.id)}
+      <div class="message-bubble {m.isSelf ? 'user' : 'agent'}">
+        <p class="govuk-body-s"><strong>{m.user}:</strong></p>
+        <div class="markdown-content">
+          <SvelteMarkdown source={m.message || ""} />
         </div>
-      </details>
-    {/if}
-
-    <div class="message-feed">
-      {#each chatMessages as m (m.id)}
-        <div class="message-bubble {m.isSelf ? 'user' : 'agent'}">
-          <p class="govuk-body-s"><strong>{m.user}:</strong></p>
-            <div class="markdown-content">
-            <SvelteMarkdown source={m.message || ""} />
-          </div>
-        </div>
-      {/each}
-    </div>
+      </div>
+    {/each}
   </div>
-
+</div>
   <div class="app-conversation-layout__fixed-footer app-conversation-layout__width-restrictor">
     {#if isLoading}
-      <div class="govuk-body govuk-hint govuk-!-margin-bottom-2">GOV.UK Onward Journey Agent is typing...</div>
+      <div class="govuk-body govuk-hint govuk-!-margin-bottom-2">GOV.UK Chat is typing...</div>
     {/if}
     <QuestionForm onSend={handleSendMessage} />
   </div>
+<div class="app-conversation-layout__width-restrictor govuk-!-margin-top-0">
+  <div class="capability-toggle-panel">
+    <div class="toggle-info">
+      <h3 class="govuk-heading-s govuk-!-margin-bottom-1">Agent Capability Control</h3>
+      <p class="govuk-body-s govuk-hint">
+        {ojaEnabled 
+          ? "Onward Journey is active: Can access OJ KB and Live Chat." 
+          : "Onward Journey is inactive: Limited to GOV.UK Chat Beta only."}
+      </p>
+    </div>
+    <button 
+      class="govuk-button {ojaEnabled ? 'govuk-button--warning' : ''}" 
+      onclick={toggleOjaCapability}>
+      {ojaEnabled ? 'Disable Onward Journey Tool' : 'Enable Onward Journey Tool'}
+    </button>
+  </div>
+</div>
+
+<hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible app-conversation-layout__width-restrictor">
 </main>
 
 <style>
@@ -342,4 +375,23 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
 .message-bubble.agent { background-color: #f3f2f1; border-left: 4px solid #1d70b8; align-self: flex-start; }
 .message-bubble.user { background-color: #005ea5; color: white; align-self: flex-end; }
 .message-bubble.user :global(strong) { color: white; }
+.capability-toggle-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  background-color: #f3f2f1;
+  border: 1px solid #b1b4b6;
+  border-radius: 4px;
+}
+
+.toggle-info h3 {
+  margin-top: 0;
+}
+
+.govuk-section-break {
+  margin: 20px auto;
+  width: 100%;
+}
+
 </style>
