@@ -158,8 +158,6 @@ class ServiceTriageQMixin:
         # Parse the response back into a dictionary
         response_body = json.loads(response['body'].read())
         raw_text = response_body['content'][0]['text']
-        if 'VisaType' in raw_text:
-            print(f"[DEBUG] Extractor LLM Raw JSON: {raw_text.strip()}")
         try:
             # Matches everything between the first '{' and the last '}'
             match = re.search(r'(\{.*\})', raw_text, re.DOTALL)
