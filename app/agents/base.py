@@ -175,7 +175,7 @@ class GenesysKBSearchMixin:
         return "\n\n".join([self.genesys_chunks[i] for i in top_idx])
 
 class BaseAgent:
-    def __init__(self, model_name: str, aws_region: str, temperature: float = 0.0):
+    def __init__(self, model_name: str, aws_region: str, temperature: float = 0.0, **kwargs):
 
             self.client = boto3.client(service_name="bedrock-runtime", region_name=aws_region)
             self.aws_region = aws_region
