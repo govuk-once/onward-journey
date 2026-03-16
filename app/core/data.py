@@ -4,9 +4,9 @@ import time
 import boto3
 import numpy as np
 import pandas as pd
+from abc import ABC
 from typing import List, Optional, Dict, Any
 from pydantic                 import BaseModel
-
 
 
 def extract_and_standardize_phone(text: str) -> str:
@@ -46,120 +46,73 @@ class SearchResult(BaseModel):
     heading_hierarchy: list[str]
     html_content: str
 
-class vectorStore:
-    """
-    Updated Container class using Amazon Titan Text Embeddings V2.
-    """
-    def __init__(self, file_path: str, aws_region: str = 'eu-west-2'):
-        self.file_path = file_path
-        self.data = pd.read_csv(self.file_path)
-        self.chunk_data = self.df_to_text_chunks()
+class BaseVectorStore(ABC):
 
-        # Initialize Bedrock client instead of loading a local model
-        self.bedrock_client = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=aws_region
-        )
+    def __init__(self, aws_region: str = 'eu-west-2', dimensions: int = 1024):
 
-        # Compute embeddings via API
-        self.embeddings = self._generate_all_embeddings(self.chunk_data)
-
-    def df_to_text_chunks(self):
-        """Converts a DataFrame into text chunks for embedding and retrieval."""
-        chunks = []
-        for _, row in self.data.iterrows():
-            chunk = (f"The unique id is {row['uid']}. The service name is {row['service_name']}. "
-                    f"The department is {row['department']}. The phone number is {row['phone_number']}. "
-                    f"The topic is {row['topic']}. The user type is {row['user_type']}. "
-                    f"The tags are {row['tags']}. The url is {row['url']}. "
-                    f"The last time the page was updated is {row['last_update']}. "
-                    f"The description is {row['description']}.")
-            chunks.append(chunk)
-        return chunks
-
-    def _get_single_embedding(self, text: str) -> List[float]:
-        """Calls Bedrock API for a single chunk."""
-        body = json.dumps({
-            "inputText": text,
-            "dimensions": 1024,
-            "normalize": True
-        })
-        response = self.bedrock_client.invoke_model(
-            modelId="amazon.titan-embed-text-v2:0",
-            body=body,
-            contentType='application/json',
-            accept='application/json'
-        )
-        response_body = json.loads(response.get('body').read())
-        return response_body.get('embedding')
-
-    def _generate_all_embeddings(self, chunks: List[str]) -> np.ndarray:
-        """Processes chunks. Note: Titan V2 prefers individual or batch calls."""
-        all_embeddings = []
-
-        for i, chunk in enumerate(chunks):
-            try:
-                embedding = self._get_single_embedding(chunk)
-                all_embeddings.append(embedding)
-                # Small sleep to prevent ThrottlingException if CSV is massive
-                if i % 10 == 0: time.sleep(0.1)
-            except Exception as e:
-                print(f"Error embedding chunk {i}: {e}")
-                # Append zero-vector to maintain index alignment on failure
-                all_embeddings.append([0.0] * 1024)
-
-        return np.array(all_embeddings)
-
-    def get_embeddings(self):
-        return self.embeddings
-
-    def get_chunks(self):
-        return self.chunk_data
-
-
-class GenesysVectorStore:
-    def __init__(self, raw_genesys_data: List[Dict[str, Any]], aws_region: str = 'eu-west-2'):
-        # Standardize the raw API data into chunks
-        self.chunk_data = self._genesys_to_text_chunks(raw_genesys_data)
+        self.bedrock_client = boto3.client(service_name="bedrock-runtime", region_name=aws_region)
         
-        self.bedrock_client = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=aws_region
-        )
-
-        # Compute embeddings via Bedrock exactly like OJ
-        self.embeddings = self._generate_all_embeddings(self.chunk_data)
-
-    def get_embeddings(self):
-        return self.embeddings
-
-    def get_chunks(self):
-        return self.chunk_data
-
-    def _genesys_to_text_chunks(self, data: List[Dict[str, Any]]) -> List[str]:
-        """Converts Genesys API results into flattened text chunks."""
-        chunks = []
-        for item in data:
-            # Reconstructing the article structure for the embedding model
-            chunk = (f"Source: Genesys Cloud Knowledge Base. "
-                     f"Article Title: {item['title']}. "
-                     f"Content: {item['content']}")
-            chunks.append(chunk)
-        return chunks
+        self.dimensions = dimensions 
+        self.chunk_data = List[str] = []
+        self.embeddings = np.ndarray = np.array([])
 
     def _get_single_embedding(self, text: str) -> List[float]:
-        # Copy-pasted from your vectorStore class to ensure identical math
-        body = json.dumps({"inputText": text, "dimensions": 1024, "normalize": True})
-        response = self.bedrock_client.invoke_model(
-            modelId="amazon.titan-embed-text-v2:0",
-            body=body,
-            contentType='application/json',
-            accept='application/json'
-        )
-        return json.loads(response.get('body').read()).get('embedding')
+        """Bedrock API call for Titan V2"""
 
-    def _generate_all_embeddings(self, chunks: List[str]) -> np.ndarray:
-        # Same loop logic as your data.py to maintain alignment
-        all_embeddings = [self._get_single_embedding(c) for c in chunks]
-        return np.array(all_embeddings)
+        body = json.dumps({"inputText": text, "dimensions": self.dimensions, "normalize": True})
+
+        try:
+            response = self.bedrock_client.invoke_model(
+                modelId="amazon.titan-embed-text-v2:0",
+                body=body,
+                contentType='application/json',
+                accept='application/json'
+            )
+            return json.loads(response.get('body').read()).get('embedding', [])
+        except Exception as e:
+            print(f"Embedding API Error: {e}")
+            return [0.0] * self.dimensions 
+    def _generate_embeddings(self):
+        """Standardized loop"""
+
+        all_vecs = []
+        for i, chunk in enumerate(self.chunk_data):
+            all_vecs.append(self._get_single_embedding(chunk))
+            if i % 10 == 0:
+                time.sleep(1)
+        
+        self.embeddings = np.array(all_vecs)
+    
+    def get_embeddings(self) -> np.ndarray:
+        return self.embeddings
+    
+    def get_chunks(self) -> List[str]:
+        return self.chunk_data 
+    
+class LocalCSVVectorStore(BaseVectorStore):
+    """Handles OJ Knowledge Base"""
+    def __init__(self, file_path: str, **kwargs):
+        super().__init__(**kwargs)
+        df = pd.read_csv(file_path)
+        self.chunk_data = self._process_df(df)
+        self._generate_embeddings()
+
+    def _process_df(self, df: pd.DataFrame) -> List[str]:
+        return [
+                    (f"The unique ID is: {r['uid']}. The service name is: {r['service_name']}. The department is: {r['department']}. "
+                    f"The phone number is: {r['phone_number']}. The topic is topic: {r['topic']}. The tags are: {r['tags']}. "
+                    f"The URL is: {r['url']}. The last time the page was updated is {r['last_update']}. The description is: {r['description']}")
+                    for _, r in df.iterrows()
+                ]
+
+class GenesysCloudVectorStore(BaseVectorStore):
+    """Handles flattened Genesys Knowledge Base API data"""
+    def __init__(self, raw_data: List[Dict[str, Any]], **kwargs):
+        super().__init__(**kwargs)
+        self.chunk_data = [f"Source: Genesys Cloud Knowledge Base. \
+                           Title: {item['title']}. \
+                           Content: {item['content']}"
+                           for item in raw_data]
+        self._generate_embeddings()
+
     
