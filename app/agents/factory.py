@@ -29,10 +29,12 @@ class GovUKAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, GovUKSearchMixin)
 
         self._tool_declarations()
     def _tool_declarations(self):
-        self.available_tools = {
+
+        self.available_tools.update({
             "query_govuk_kb": self.query_govuk_kb,
-        }
-        self.bedrock_tools = tools_registry.get_govuk_definitions()
+        })
+        self.bedrock_tools.extend(tools_registry.get_govuk_definitions())
+
 
 class OnwardJourneyAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchMixin, LiveChatMixin, ServiceTriageQMixin, GenesysKBSearchMixin):
     def __init__(self,
@@ -105,54 +107,32 @@ class OnwardJourneyAgent(BaseAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchM
 
             "Always clarify ambiguity before calling tools.")
     def _tool_declarations(self):
-        """Maps Bedrock tool names to Python functions based on strategy."""
+        """Maps Bedrock tool names to Python functions. Register OJ KB search tool and live chat tool"""
 
-        # Internal RAG logic stays in Agent to access local embeddings
-        self.available_tools = {
+        self.available_tools.update({
             "query_internal_kb": self.query_internal_kb,
-             "query_genesys_kb": self.query_genesys_kb_oj
-        }
+            "query_genesys_kb": self.query_genesys_kb_oj})
 
-        self.available_tools = self.available_tools | self._get_live_chat_registry()
+        # Add live chat reg from Mixin 
+        self.available_tools.update(self._get_live_chat_registry())
 
-        self.bedrock_tools = (tools_registry.get_internal_kb_definition() +
-                               tools_registry.get_genesys_kb_definition()  +  
-                              integrations_registry.get_live_chat_definitions())
+        self.bedrock_tools.extend(
+            tools_registry.get_internal_kb_definition() +
+            tools_registry.get_genesys_kb_definition() + 
+            integrations_registry.get_live_chat_definitions()
+        )
 
     def query_genesys_kb_oj(self, query: str) -> str:
         return self.query_genesys_kb(query, top_k=self.top_K_OJ)
 
-class hybridAgent(OnwardJourneyAgent, HandOffMixin, QueryEmbeddingMixin, OJSearchMixin, GovUKSearchMixin, LiveChatMixin):
-    def __init__(self,
-                 handoff_package: dict,
-                 vector_store_embeddings: np.ndarray,
-                 vector_store_chunks: list[str],
-                 embedding_model:str = "amazon.titan-embed-text-v2:0",
-                 model_name: str = "anthropic.claude-3-7-sonnet-20250219-v1:0",
-                 aws_region: str = 'eu-west-2',
-                 temperature: float = 0.0,
-                 top_K_OJ: int = 3,
-                 top_K_govuk: int = 3,
-                 verbose: bool = False):
+class hybridAgent(OnwardJourneyAgent, GovUKAgent):
+    def __init__(self, **kwargs):
+        # arguments passed to objects up chain
+        super().__init__(**kwargs)
 
-        super().__init__(handoff_package, vector_store_embeddings, vector_store_chunks, embedding_model, model_name, aws_region, temperature, top_K_OJ)
-
-        self.handoff_package = handoff_package
-
-        self.embedding_model =embedding_model
-        self.top_K_OJ        = top_K_OJ
-        self.top_K_govuk     = top_K_govuk
-
-        self._tool_declarations()
     def _tool_declarations(self):
-        """Maps Bedrock tool names to Python functions based on strategy."""
+        """Combine tools from both agents"""
 
-        # Internal RAG logic stays in Agent to access local embeddings
-        self.available_tools = {
-            "query_internal_kb": self.query_internal_kb,
-            "query_govuk_kb": self.query_govuk_kb,
-        }
-
-        self.available_tools = self.available_tools | self._get_live_chat_registry()
-
-        self.bedrock_tools = tools_registry.get_internal_kb_definition() + tools_registry.get_govuk_definitions() + integrations_registry.get_live_chat_definitions()
+        super()._tool_declartions()
+        
+        GovUKAgent._tool_declarations(self)
