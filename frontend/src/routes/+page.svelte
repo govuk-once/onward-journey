@@ -30,18 +30,28 @@ let triageDisplay = $state({
   all_required: []
 });
 
-// --- New Toggle Action ---
 async function toggleOjaCapability() {
   const nextState = !ojaEnabled;
+  
   try {
+    // Ensure the port (8000) matches Uvicorn startup port
     const res = await fetch(`http://localhost:8000/agent/toggle?enabled=${nextState}`, {
-      method: "POST"
+      method: "POST",
+      headers: {
+        "Accept": "application/json"
+      }
     });
+
     if (res.ok) {
-      ojaEnabled = nextState;
+      const data = await res.json();
+      ojaEnabled = data.oja_enabled; // Use the server's confirmed state
+      console.log("Toggle successful:", data);
+    } else {
+      const errorData = await res.json();
+      console.error("Server rejected toggle:", errorData);
     }
   } catch (err) {
-    console.error("Failed to toggle OJA:", err);
+    console.error("Network error - is the backend running on port 8000?", err);
   }
 }
 
@@ -233,7 +243,6 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
       returnToAIAgent();
     };
   }
-
 async function handleSendMessage(userText: string) {
   if (!userText.trim() || isLoading) return;
   chatMessages = [...chatMessages, { message: userText, user: "You", isSelf: true, id: uuid() }];
