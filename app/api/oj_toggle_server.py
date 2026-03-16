@@ -5,9 +5,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-# Core imports from your factory
-from app.core.data import vectorStore, GenesysVectorStore
 from app.integrations.genesys import GenesysServiceDiscovery
+from app.core.data import LocalCSVVectorStore, GenesysCloudVectorStore
 
 # environment setup
 env_path = Path(__file__).parent.parent.parent / '.env'
@@ -31,10 +30,10 @@ app.add_middleware(
 
 # data initialization (onward journey knowledge base and live chat service discovery)
 KB_PATH = os.getenv("KB_PATH", "./your_kb_file.csv")
-vs = vectorStore(file_path=KB_PATH)
+vs = LocalCSVVectorStore(file_path=KB_PATH)
 y = GenesysServiceDiscovery()
 raw_gen_data = y.get_all_kb_content(os.getenv("GENESYS_KB_ID"))
-vs_genesys = GenesysVectorStore(raw_gen_data)
+vs_genesys = GenesysCloudVectorStore(raw_gen_data)
 
 # Initialize the specialized OnwardJourneyAgent
 # This agent keeps its unique system_instructions intact (defined within object)
