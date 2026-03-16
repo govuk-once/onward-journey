@@ -53,8 +53,8 @@ class BaseVectorStore(ABC):
         self.bedrock_client = boto3.client(service_name="bedrock-runtime", region_name=aws_region)
         
         self.dimensions = dimensions 
-        self.chunk_data = List[str] = []
-        self.embeddings = np.ndarray = np.array([])
+        self.chunk_data: List[str] = []
+        self.embeddings: np.ndarray = np.array([])
 
     def _get_single_embedding(self, text: str) -> List[float]:
         """Bedrock API call for Titan V2"""
