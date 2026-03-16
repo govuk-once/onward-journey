@@ -1,10 +1,10 @@
 import os
 from pathlib import Path
+from fastapi import Query
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-
 from app.integrations.genesys import GenesysServiceDiscovery
 from app.core.data import LocalCSVVectorStore, GenesysCloudVectorStore
 
@@ -54,11 +54,11 @@ base_agent = BaseAgent(
 )
 
 # Capability management endpoints
-
 @app.post("/agent/toggle")
-async def toggle_oja(enabled: bool):
-    """Simple toggle for the routing logic."""
+async def toggle_oja(enabled: bool = Query(...)):
+    """Explicitly tell FastAPI to look for 'enabled' in the URL query string."""
     AGENT_CONFIG["oja_enabled"] = enabled
+    print(f"OJA System Toggled to: {enabled}") # Added for server-side debugging
     return {"status": "success", "oja_enabled": enabled}
 
 @app.get("/agent/status")
