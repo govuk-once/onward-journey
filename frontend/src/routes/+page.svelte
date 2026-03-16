@@ -21,7 +21,7 @@
     agentId?: string;
   }
 
-// --- New State for Capability Gating ---
+// --- New State for Capability Gating
 let ojaEnabled = $state(false);
 
 let triageDisplay = $state({
@@ -239,7 +239,7 @@ async function handleSendMessage(userText: string) {
   chatMessages = [...chatMessages, { message: userText, user: "You", isSelf: true, id: uuid() }];
 
   if (isLiveChat && socket?.readyState === 1) {
-    // Standard Live Chat forwarding [cite: 49]
+    // Standard Live Chat forwarding 
     socket.send(JSON.stringify({ action: "onMessage", token: sessionToken, message: { type: "Text", text: userText } }));
     return;
   }
