@@ -5,8 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from pathlib import Path
 from dotenv import load_dotenv
-from app.core.data import vectorStore, GenesysVectorStore
 from app.integrations.genesys import GenesysServiceDiscovery
+from app.core.data import LocalCSVVectorStore, GenesysCloudVectorStore
 env_path = Path(__file__).parent.parent.parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
@@ -34,11 +34,11 @@ app.add_middleware(
 
 # Load OJ Knowledge Base
 KB_PATH = os.getenv("KB_PATH", "./your_kb_file.csv")
-vs = vectorStore(file_path=KB_PATH)
+vs = LocalCSVVectorStore(file_path=KB_PATH)
 
 y = GenesysServiceDiscovery()
 raw_gen_data = y.get_all_kb_content(os.getenv("GENESYS_KB_ID"))
-vs_genesys = GenesysVectorStore(raw_gen_data)
+vs_genesys = GenesysCloudVectorStore(raw_gen_data)
 # Initialize Agent
 agent = OnwardJourneyAgent(
     handoff_package=example_handoff_pension_schemes_nohelp(),
