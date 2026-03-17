@@ -91,82 +91,185 @@ class HandOffMixin:
         return await self._send_message_and_tools(initial_prompt)
 
 class ServiceTriageQMixin:
-    SERVICE_SCHEMAS = live_registry.get_triage_data()
+    SERVICE_SCHEMAS = live_registry.get_triage_fields()
 
-    async def extract_triage_data(self, service: str, history: List[Dict]) -> Dict[str, Any]:
-        """
-        Performs a semantic gap analysis by calling the LLM to extract data from history C.
-        """
-        found_key = None
-        for key, value in self.SERVICE_SCHEMAS.items():
-            if value.get('name') == service:
-                found_key = key
+    triage_state: Dict[str, Any] = {}
+    active_service_id: Optional[str] = None 
 
-        # Identify the last question asked to anchor short answers
-            last_assistant_question = "N/A"
-            for msg in reversed(history):
-                if msg['role'] == 'assistant' and msg.get('content'):
-                    # Grab the text content of the last assistant turn
-                    last_assistant_question = next((c['text'] for c in msg['content'] if c['type'] == 'text'), "N/A")
-                    break
+    def _build_extraction_system_prompt(self, schema: Dict, history: List[Dict], last_q: str) -> str:
+        """Constructs the structured prompt for the LLM"""
+        required = schema['triage_fields'].get('missing', [])
+        options = schema['triage_fields'].get('field_options', {})
 
-        required = self.SERVICE_SCHEMAS[found_key]['triage_data'].get('missing', []) if found_key is not None else []
-        # We only send the text content to save tokens and focus the extraction
-        history_str = json.dumps(history)
-
-
-        # crafting a prompt to extract required triage data from the conversation history
-        extraction_prompt = (
-                    f"ACT AS A DATA EXTRACTOR. Analyze this conversation history: {history_str}\n"
+        return (
+                    f"ACT AS A DATA EXTRACTOR. Analyze this conversation history: {history}\n"
                     f"Target Fields: {required}.\n"
-                    f"Field Options/Constraints: {self.SERVICE_SCHEMAS[found_key]['triage_data'].get('field_options', {})}\n\n"
+                    f"Field Options/Constraints: {options}\n\n"
                     f"CONTEXTUAL ANCHOR: \n"
-                    f"The last question asked was: '{last_assistant_question}'\n\n"
+                    f"The last question asked was: '{last_q}'\n\n"
                     
-                    "### RULES FOR SCALABLE EXTRACTION: \n"
+                    "1. RULES FOR SCALABLE EXTRACTION: \n"
                     "1. SEMANTIC MAPPING: Do not look for exact words. If the user describes a state, extract the corresponding field. "
                     "Examples: ('speed up' or 'no news' -> Update: Yes); ('already sent' or 'last month' -> Applied: Yes).\n"
                     
                     "2. DEPENDENCY LOGIC (COMMON SENSE): Use the relationship between fields to fill 'ghost' answers:\n"
                     "   - PRE-REQUISITES: If a user is at a 'Late Stage' (asking for updates or status), automatically set 'Early Stage' fields (like Help Applying) to 'No'.\n"
                     "   - MUTUAL EXCLUSIVITY: If a user confirms one path, logically infer 'No' for the alternative paths within the same service schema.\n"
-                    "   - NEGATIVE INFERENCE: If a user explicitly complains about one specific hurdle, and the schema asks about other hurdles (e.g., 'Trouble Proving Status'), infer 'No' for the others to avoid redundant questioning.\n"
                     
-                    "3. CONFIDENCE & NULLS: Only fill a field if it is explicitly stated or logically necessitated by Rule 2. "
+                    "3. CONFIDENCE & NULLS: Only fill a field if it is explicitly stated or logically necessitated by COMMON SENSE / DEPENDENCY LOGIC. "
                     "If the information is completely absent and cannot be logically inferred, mark as null.\n"
                     
-                    "4. OUTPUT FORMAT: Return the a JSON object AND reasons for each individual extraction. Do not include any preamble, conversational filler, or markdown formatting other than the JSON itself. If you cannot extract data, return empty extracted object."                    " - 'extracted' : {{field: value}} for identified or logically inferred data.\n"
+                    "4. OUTPUT FORMAT: Return the a JSON object for each individual extraction. Do not include any preamble, conversational filler, or markdown formatting other than the JSON itself. If you cannot extract data, return empty extracted object."                    " - 'extracted' : {{field: value}} for identified or logically inferred data.\n"
                     " - 'missing' : [list] of fields that truly remain unknown.\n"
                     " - 'follow_up': A natural question for the FIRST missing field only.\n\n"
+                    " - 'reasons' : The reasons for each extraction per variable."
                     
                     "Maintain the logic established by long-form narrative; do not let a 'Yes/No' answer to a specific question overwrite a complex situation described earlier."
                 )
+
+    def _is_relevant_service(self, svc_id: str, extracted_data: Dict[str, Any]) -> bool:
+        """
+        Determines if the extracted data truly belongs to the given service.
+        """
+        # 1. Get the list of field names specific to this department from the registry
+        # In your case, Immigration fields often start with 'Task.'
+        schema = self.SERVICE_SCHEMAS.get(svc_id, {})
+        valid_fields = schema.get('triage_fields', {}).get('missing', [])
         
-        # llm call, use a low temperature for deterministic extraction and client assumed to be part of obj
+        # 2. Check if any of the keys found by the LLM match this specific schema
+        # This prevents cross-contamination (e.g., MOJ fields being added during Immigration)
+        has_matching_fields = any(key in valid_fields for key in extracted_data.keys())
+        
+        # 3. Use semantic keywords to verify department relevance
+        # This acts as a secondary safety gate
+        content_str = str(extracted_data).lower()
+        keywords = {
+            "immigration_and_visas": ["visa", "permit", "settlement", "immigrat"],
+            "moj": ["court", "justice", "legal aid", "prison"],
+            "hmrc": ["tax", "pension", "vat", "revenue"]
+        }
+        
+        dept_keywords = keywords.get(svc_id, [])
+        keyword_match = any(word in content_str for word in dept_keywords) if dept_keywords else True
+
+        return has_matching_fields and keyword_match
+    
+    def _get_schema_key_by_service(self, service: str) -> Optional[str]:
+        """Finds key for a given service name"""
+        for key, value in self.SERVICE_SCHEMAS.items():
+            if value.get('name') == service:
+                return key
+        return None 
+
+    def _get_last_assistant_question(self, history: List[Dict]) -> str:
+        """Extracts text of the most recent assistant message to anchor context"""
+        for msg in reversed(history):
+
+            if msg['role'] == 'assistant' and msg.get('content'):
+                return next((c['text'] for c in msg['content'] if c['type'] == 'text'), "N/A")
+
+    def _parse_llm_response(self, text: str) -> Dict[str, Any]:
+        """Safely extract JSON from LLM response"""
+
+        try:
+            match = re.search(r'(\{.*\})', text, re.DOTALL)
+            if match:
+                return json.loads(match.group(1))
+        except Exception as e:
+            print(f"[ERROR] Extraction failed: {e}")
+
+    async def _call_llm_for_extraction(self, prompt: str) -> str:
+        """Handles Bedrock API call"""
+
         body = json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
-            "messages": [{"role": "user", "content": extraction_prompt}],
+            "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 1000,
             "temperature": 0.0 # Strict extraction, no creativity
         })
-
+        
         response = self.client.invoke_model(
             modelId=self.model_name,
             body=body
         )
-
-        # Parse the response back into a dictionary
         response_body = json.loads(response['body'].read())
-        raw_text = response_body['content'][0]['text']
-        try:
-            # Matches everything between the first '{' and the last '}'
-            match = re.search(r'(\{.*\})', raw_text, re.DOTALL)
-            if match:
-                return json.loads(match.group(1))
+
+        return response_body['content'][0]['text']
+
+    async def coordinate_service_triage(self, history: List[Dict]) -> str:
+        """"""
+
+        # determine which services to triage (an actively assigned one or all to begin with)
+        services_to_check = {self.active_service_id: self.SERVICE_SCHEMAS[self.active_service_id]} if self.active_service_id else self.SERVICE_SCHEMAS
+
+        # skip if active service is already complete (e.g. no more fields to find)
+        if self.active_service_id:
+            required = self.SERVICE_SCHEMAS[self.active_service_id]['triage_fields']
+            if all(f in self.triage_state for f in required):
+                return ""
+        
+        injection_parts = []
+
+        for svc_id, svc_info in services_to_check.items():
+
+            slot_report = await self.slot_extraction(svc_info['name'], history)
+            extracted = slot_report.get("extracted", {})
+
+            print(f"[DEBUG - SLOT REPORT]: Extracted: {extracted}")
+            print(f"[DEBUG - CURRENT STATE]: {self.triage_state}")
+
+            if extracted and self._is_relevant_service(svc_id, extracted):
+
+                self.active_service_id = svc_id 
+                self.triage_state.update(extracted)
+
+                required_fields = svc_info['triage_fields'].get('missing', [])
+                still_missing = [f for f in required_fields if f not in self.triage_state]
+                print(f"[DEBUG - TRIAGE PROGRESS]: Service: {svc_id} | Still Missing: {still_missing}")
+                if still_missing:
+                    injection_parts.append(
+                    f"\n\n### MANDATORY TRIAGE IN PROGRESS ###\n"
+                    f"Verified Data: {json.dumps(self.triage_state)}\n"
+                    f"STILL MISSING: {still_missing}\n"
+                    f"CRITICAL INSTRUCTION: You are FORBIDDEN from calling any 'connect_to_live_chat' tools yet. "
+                    f"The triage is incomplete. You must ask the user: '{slot_report.get('follow_up')}'"
+                )
+                else:
+                    injection_parts.append(
+                        f"\n\n### TRIAGE COMPLETE ###\n"
+                        f"Verified Data: {json.dumps(self.triage_state)}\n"
+                        f"INSTRUCTIONS:\n"
+                        f"1. Inform the user you have all the necessary details.\n"                        
+                        f"2. ASK the user if they would like you to connect them to a live specialist now.\n"                        
+                        f"3. STOP. Do not call the 'connect_to_live_chat' tool yet. Wait for their agreement."
+                    )
+        return "\n\n".join(injection_parts)
+ 
+    async def slot_extraction(self, service: str, history: List[Dict]) -> Dict[str, Any]:
+        """
+        Performs a semantic gap analysis by calling the LLM to extract data from history C.
+        """
+
+        # resolve schema details 
+        schema_key = self._get_schema_key_by_service(service)
+        if not schema_key:
             return {"extracted": {}, "missing": [], "follow_up": None}
-        except Exception as e:
-            print(f"[ERROR] Extraction failed: {e}")
-            return {"extracted": {}, "missing": [], "follow_up": None}
+        
+        # prepare contextual info 
+        last_q = self._get_last_assistant_question(history)
+        schema_data = self.SERVICE_SCHEMAS[schema_key]
+
+        # build and execute request
+        prompt = self._build_extraction_system_prompt(schema_data, history, last_q)
+        raw_response = await self._call_llm_for_extraction(prompt)
+
+        print(f"\n[DEBUG - RAW EXTRACTION]: Service: {service}")
+        print(f"LLM Response: {raw_response}") # See the raw JSON/Reasoning from the extractor
+
+        parsed = self._parse_llm_response(raw_response)
+        # parse and return
+        return parsed 
+    
 class GenesysKBSearchMixin:
     def query_genesys_kb(self, query: str, top_k: int = 3) -> str:
         query_vec = np.array(self._get_embedding(query)).reshape(1, -1)
@@ -226,69 +329,14 @@ class BaseAgent:
         }
         resp = self.client.invoke_model(modelId=self.model_name, body=json.dumps(body))
         return json.loads(resp['body'].read())
-    #def _is_relevant_service(self, svc_id: str, extracted_data: Dict[str, Any], sim_score=0.75) -> bool:
-        """
-        Scalable Vector Similarity check to prevent cross-contamination.
-        """
-        schema = self.SERVICE_SCHEMAS.get(svc_id)
-        if not schema or not extracted_data:
-            return False
 
-        # Hard Constraint: Field Name Check
-        # Still useful to ensure the LLM didn't hallucinate keys from other depts
-        valid_fields = schema.get('triage_data', {}).get('missing', [])
-        if not any(key in valid_fields for key in extracted_data.keys()):
-            return False
-
-        # Semantic Constraint: Vector Similarity
-        # Compare the extracted data content to the Service's defined purpose
-        try:
-            # Flatten the extracted data into a string for embedding
-            data_str = " ".join([f"{k}: {v}" for k, v in extracted_data.items()])
-            data_vector = np.array(self._get_embedding(data_str)).reshape(1, -1) #
-
-            # Get the pre-cached embedding for the service description
-            # (You should generate this once at startup and store it in svc_info)
-            service_description = schema.get('description', "")
-            service_vector = np.array(self._get_embedding(service_description)).reshape(1, -1) #
-
-            similarity = cosine_similarity(data_vector, service_vector)[0][0] #
-            
-            # Debugging is key for fine-tuning your threshold
-            print(f"[DEBUG] Similarity for {svc_id}: {similarity:.4f}")
-
-            
-            return similarity > sim_score
-            
-        except Exception as e:
-            print(f"[ERROR] Vector relevance check failed: {e}")
-            return True # Fallback to True to avoid blocking the flow on API errors
-    def _is_relevant_service(self, svc_id: str, extracted_data: Dict[str, Any]) -> bool:
-        """
-        Determines if the extracted data truly belongs to the given service.
-        """
-        # 1. Get the list of field names specific to this department from the registry
-        # In your case, Immigration fields often start with 'Task.'
-        schema = self.SERVICE_SCHEMAS.get(svc_id, {})
-        valid_fields = schema.get('triage_data', {}).get('missing', [])
-        
-        # 2. Check if any of the keys found by the LLM match this specific schema
-        # This prevents cross-contamination (e.g., MOJ fields being added during Immigration)
-        has_matching_fields = any(key in valid_fields for key in extracted_data.keys())
-        
-        # 3. Use semantic keywords to verify department relevance
-        # This acts as a secondary safety gate
-        content_str = str(extracted_data).lower()
-        keywords = {
-            "immigration_and_visas": ["visa", "permit", "settlement", "immigrat"],
-            "moj": ["court", "justice", "legal aid", "prison"],
-            "hmrc": ["tax", "pension", "vat", "revenue"]
-        }
-        
-        dept_keywords = keywords.get(svc_id, [])
-        keyword_match = any(word in content_str for word in dept_keywords) if dept_keywords else True
-
-        return has_matching_fields and keyword_match
+    def _is_triage_complete(self, svc_id: str) -> bool:
+        required = self.SERVICE_SCHEMAS.get(svc_id, {}).get('triage_fields', {})
+        return all(f in self.triage_state for f in required)
+    
+    def _get_missing_fields(self, svc_id: str) -> List[str]:
+        required = self.SERVICE_SCHEMAS.get(svc_id, {}).get('triage_fields', {}).get('missing', [])
+        return [f for f in required if f not in self.triage_state]
 
     async def _finalize_handoff(self, system_instruction: str, handoff_signal: str) -> str:
         """
@@ -314,69 +362,31 @@ class BaseAgent:
         self._add_to_history("user", "[SYSTEM]: User has been moved to a live chat queue. Awaiting hand-back.")
         return f"{final_text}\n\n{handoff_signal}"
 
-    async def _run_triage_extraction(self) -> str:
-        """
-        """
-        
-        # check if agent has the mixin injected, if not triage extraction is an identity function
-        if not hasattr(self, 'extract_triage_data') or not hasattr(self, 'SERVICE_SCHEMAS'):
-            return ""
-        
-        # pull service id from servicetriageqmixin 
-        active_svc_id = getattr(self, 'active_service_id', None)
-        services_to_check = {active_svc_id: self.SERVICE_SCHEMAS[active_svc_id]} if active_svc_id else self.SERVICE_SCHEMAS
-
-        injection_parts = []
-
-        for svc_id, svc_info in services_to_check.items():
-
-            report = await self.extract_triage_data(svc_info['name'], self.history)
-            extracted = report.get("extracted", {})
-            #print(f"\n Running extraction for: {svc_info['name']}")
-            if extracted and self._is_relevant_service(svc_id, extracted):
-
-                self.active_service_id = svc_id
-                self.triage_state.update(extracted)
-                required_fields = svc_info['triage_data'].get('missing', [])
-                still_missing = [f for f in required_fields if f not in self.triage_state]
-                print(f"COLLECTED TRIAGE INFO: {self.triage_state}")
-                print(f"MISSING TRIAGE INFO: {still_missing}")
-                injection_parts.append(
-                    f"\n\n### MANDATORY TRIAGE PROTOCOL ###\n"
-                    f"The following fields are already VERIFIED in the session database: {json.dumps(self.triage_state)}\n"
-                    f"1. DO NOT mention, confirm, or ask the user about these verified fields.\n"
-                    f"2. YOUR NEXT QUESTION MUST ONLY BE ABOUT: {still_missing}.\n"
-                    f"3. IF 'Still Missing' is empty, YOU MUST IMMEDIATELY CALL the appropriate 'connect_to_live_chat' tool. "
-                    f"DO NOT ask the user for permission to connect if you have already gathered the data; just execute the tool."
-                )
-                if not still_missing:
-                    injection_parts.append(
-                        f"\n\n### TRIAGE COMPLETE ###\n"
-                        f"Verified Data: {json.dumps(self.triage_state)}\n"
-                        f"INSTRUCTIONS:\n"
-                        f"1. Inform the user you have all the necessary details.\n"                        
-                        f"2. ASK the user if they would like you to connect them to a live specialist now.\n"                        
-                        f"3. STOP. Do not call the 'connect_to_live_chat' tool yet. Wait for their agreement."
-                    )
-                
-        return "\n\n".join(injection_parts)
-
     async def _handle_handoff_gate(self, tool_name: str, args: dict) -> str:
         
         service_id = tool_name.replace("connect_to_live_chat_", "")
+        print(f"[DEBUG - HANDOFF GATE]: Checking {service_id}")
+        # check: is local state already complete?
+        if not self._is_triage_complete(service_id):
+            print(f"[DEBUG - HANDOFF GATE]: Triage incomplete. Attempting final extraction.")
+            slot_report  = await self.slot_extraction(service_id, self.history)
+            final_report = {**self.triage_state, **slot_report.get("extracted", {})}
 
-        triage_report = await self.extract_triage_data(service_id, self.history)
-        final_triage = {**self.triage_state, **triage_report.get("extracted", {})}
-        required = self.SERVICE_SCHEMAS.get(service_id, {}).get('triage_data', {}).get('missing', [])
-        missing_now = [f for f in required if f not in final_triage]
+            required = self.SERVICE_SCHEMAS.get(service_id, {}).get('triage_fields', {}).get('missing', [])
+            missing_now = [f for f in required if f not in final_report]
 
-        if missing_now:
+            if missing_now:
+                print(f"[DEBUG - HANDOFF GATE]: BLOCKED! Missing: {missing_now}")
+                return (f"HANDOFF_BLOCKED: Information missing for {service_id}: {missing_now}."
+                        f"INSTRUCTION: Ask the user for this missing information using {slot_report.get('follow up')}")
 
-            return (f"HANDOFF_BLOCKED: Information missing for {service_id}: {missing_now}."
-                    f"INSTRUCTION: Ask the user for this missing information using {triage_report.get('follow up')}")
+            # sync state 
+            self.triage_state.update(slot_report.get("extracted"), {})
+        print(f"[DEBUG - HANDOFF GATE]: PASSED. Executing {tool_name}")
+        args['triage_fields'] = self.triage_state
 
-        args['triage_data'] = final_triage 
         func = self.available_tools[tool_name]
+        
         if 'app.integrations' in func.__module__:
             args['history'] = deepcopy(self.history)
         return await func(**args) if asyncio.iscoroutinefunction(func) else func(**args)        
@@ -384,12 +394,22 @@ class BaseAgent:
     async def _send_message_and_tools(self, prompt: str) -> str:
         """The core orchestration loop shared by all agents, now with dynamic triage gating."""
         
+        print('[PROMPT]:', prompt)
+
         self._add_to_history("user", prompt)
 
+        loop_count = 0
+        triage_injected = False 
         while True:
+            loop_count += 1
+            print(f"\n[DEBUG - LOOP ITERATION]: {loop_count}")
             # Refresh triage injection every loop so the LLM sees what it just collected
-            triage_injection = await self._run_triage_extraction()
-
+            triage_injection = ""
+            
+            if hasattr(self, 'coordinate_service_triage') and not triage_injected:
+                triage_injection = await self.coordinate_service_triage(self.history)
+                print('[TRIAGE INJECTION]:', triage_injection)
+                triage_injected = True 
             effective_system_instruction = self.prompt_guidance.compose_system_instruction(
                 self.system_instruction + triage_injection,
                 prompt,
@@ -402,6 +422,9 @@ class BaseAgent:
             text = next((c['text'] for c in content if c['type'] == 'text'), None)
             tool_use = [c for c in content if c['type'] == 'tool_use']
 
+            if text: print(f"[DEBUG - ASSISTANT TEXT]: {text}")
+            if tool_use: print(f"[DEBUG - TOOL CALLS]: {[t['name'] for t in tool_use]}")
+
             self._add_to_history("assistant", text, tool_calls=tool_use)
 
             if not tool_use:
@@ -412,7 +435,7 @@ class BaseAgent:
             for call in tool_use:
 
                 out = await self._execute_tool(call)
-
+                print(f"[DEBUG - TOOL RESULT]: {call['name']} -> {str(out)[:100]}...") # Truncated for readability
                 results.append({
                     "type": "tool_result",
                     "tool_use_id": call['id'],
@@ -423,5 +446,3 @@ class BaseAgent:
 
             if "SIGNAL: initiate_live_handoff" in str(out):
                 return await self._finalize_handoff(effective_system_instruction, out)
-
-            self._add_to_history("user", tool_results=results)
