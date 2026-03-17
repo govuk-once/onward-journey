@@ -24,11 +24,7 @@
 // --- New State for Capability Gating
 let ojaEnabled = $state(false);
 
-let triageDisplay = $state({
-  active_service: "None",
-  collected: {},
-  all_required: []
-});
+
 
 async function toggleOjaCapability() {
   const nextState = !ojaEnabled;
@@ -65,17 +61,6 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
   let isLiveChat = $state(false);
   let socket: WebSocket | null = $state(null);
   let sessionToken = $state("");
-  let handoffProcessed = $state(false);
-
-  let handoffPackage = $state({
-      final_conversation_history: [
-        { role: "user", content: [{ type: "text", text: "I'm trying to find the line for Pension Schemes." }] },
-        { role: "assistant", content: [{ type: "text", text: "I don't have the specific phone number for HMRC Pension Schemes Services in the guidance provided.The guidance shows that you \
-    'can contact HMRC Pension Schemes Services by: using the online contact form writing to: Pension Schemes Services, HM Revenue and Customs, \
-    'BX9 1GH, United Kingdom. You can find phone contact details for other HMRC services on the Contact HMRC page. GOV.UK Chat can make mistakes. \
-    'Check GOV.UK pages for important information. GOV.UK pages used in this answer (links open in a new tab)'" }] },
-      ]
-    });
 
   // --- Actions ---
   function autoScroll(node: HTMLElement) {
@@ -130,26 +115,6 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
       }];
     } finally {
       isLiveChat = false;
-    }
-  }
-
-  async function triggerHandoffAnalysis() {
-    isLoading = true;
-    try {
-      const res = await fetch("http://localhost:8000/handoff/process", { method: "POST" });
-      if (!res.ok) throw new Error("Server error");
-      const data = await res.json();
-      chatMessages = [...chatMessages, {
-        message: data.response,
-        user: "GOV.UK Chat",
-        isSelf: false,
-        id: uuid()
-      }];
-      handoffProcessed = true;
-    } catch {
-      chatMessages = [...chatMessages, { message: "Error processing context.", user: "System", isSelf: false, id: uuid() }];
-    } finally {
-      isLoading = false;
     }
   }
 
@@ -280,10 +245,6 @@ async function handleSendMessage(userText: string) {
       body: JSON.stringify({ message: userText })
     });
     const data = await res.json();
-
-    if (data.debug) {
-      triageDisplay = data.debug;
-    }
     
     // Handle handoff signals if OJA provides them
     if (data.response?.includes("initiate_live_handoff")) {
@@ -306,8 +267,6 @@ async function handleSendMessage(userText: string) {
   }
 }
 </script>
-
-
 
 
 <main class="app-conversation-layout__main">
