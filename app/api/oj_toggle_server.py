@@ -128,7 +128,7 @@ async def chat_endpoint(request: ChatRequest):
                     "active_service": active_svc,
                     "triage_state": oja_internal.triage_state,
                     "missing_fields": oja_internal.SERVICE_SCHEMAS.get(active_svc, {})
-                                    .get('triage_data', {}).get('missing', [])
+                                    .get('triage_fields', {}).get('missing', [])
                                     if active_svc in oja_internal.SERVICE_SCHEMAS else []
                 }
             }
