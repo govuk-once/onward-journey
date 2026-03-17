@@ -50,7 +50,7 @@
         type="text"
         placeholder="Ask a question..."
       />
-      {#if hasValue} 
+      <!-- {#if hasValue} 
       <button type="submit" class="circular-button" data-module="govuk-button">
         ^
       </button>
@@ -58,7 +58,7 @@
       <button type="submit" class="circular-button" data-module="govuk-button">
         ...
       </button>
-      {/if}
+      {/if} -->
     </div>
   </div>
 </form>
