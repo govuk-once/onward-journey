@@ -10,16 +10,37 @@ The project is organized into the following Python files:
 
 | File Name          | Description                                                                                                                                    |
 | :----------------- | :-------------------------------------------------
-| `main.py`          | Sets up the environment, loads data, initializes the agent, and runs a sample conversation loop.                                               |
-| `agents.py`        | Contains the `OnwardJourneyAgent` class, which handles LLM configuration, tool declaration, RAG implementation, and the interactive chat loop. |
-| `data.py`          | Contains the `container` class and utility functions (`df_to_text_chunks`) for loading CSV data, chunking it, and generating embeddings.       |
-| `preprocessing.py` | Contains utility functions for data preparation, specifically for transforming raw conversation logs into structured JSON formats.             |
-| `test.py`          | *Evaluator*: Logic for running batch test cases and mapping results to topics for analysis. |
-| `metrics.py`       | *Analytics*: Calculates the Clarification Success Gain (CSG) score |
-| `helpers.py`       | *Utilities*: Standardizes UK phone numbers and maps labels for confusion matrices. |
-| `plotting.py`      | *Visuals*: Generates Seaborn-based heatmaps for performance reporting.|
+| `oj_toggle_server.py` | **API Layer**: FastAPI server managing agent state, chat endpoints, and the hand-back logic from live chat. |
+| `base.py` | **Core Logic**: Contains the `BaseAgent` and capability **Mixins** (`LiveChatMixin`, `HandOffMixin`, `ServiceTriageQMixin`) that handle orchestration and slot extraction. |
+| `factory.py` | **Agent Factory**: Defines specialized agents (`OnwardJourneyAgent`, `GovUKAgent`, `hybridAgent`) by combining Mixins. |
+| `genesys.py` | **Integrations**: Handles communication with Genesys Cloud SDK for Knowledge Base discovery and Live Chat configuration. |
+| `data.py` | **Data Layer**: Implements Vector Stores for Local CSVs and Genesys Cloud content using Amazon Titan embeddings. |
+| `engine.py` | **Prompt Engine**: Manages politeness of system instructions and `Cache Augmented Generation (CAG)` to reduce LLM costs. |
+| `tools_registry.py` | **Tool Definitions**: Centralized JSON schemas for Bedrock tool-calling. |
+
+| `main.py`          | CLI entry point: the primary script for running the agent in interactive mode or executing batch test runs                                               |
+
+| `frontend/src/routes/+page.svelte`          | Svelte 5 reactive frontend managing real-time WebSocket connections to Genesys.                                              |
+
+| `evaluation/`          | contains `test.py` and `benchmarking.py` for performance scoring and topic mapping                                              |
 
 ---
+
+## Advanced Features
+
+### 1. Multi-Stage Triage (Slot Filling)
+The system uses the `ServiceTriageQMixin` to perform "Semantic Mapping." It doesn't just look for keywords; it uses the LLM as a data extractor to determine if a user has logically provided information.
+
+### 2. The Handoff "Gate"
+To protect live agent capacity, the `_handle_handoff_gate` function in `base.py` acts as a hard validator. Even if the LLM *wants* to connect the user, the backend will block the tool execution and force a follow-up question if mandatory fields are missing. 
+
+### 3. Hybrid RAG
+The system can simultaneously search:
+* **Local CSVs**: For internal contact routing data.
+* **Genesys KB**: For live-synced department policies.
+* **OpenSearch**: For public GOV.UK documentation.
+### 4. Cache Augmented Generation (CAG)
+The `CAGQueryCache` reduces latency by performing a TF-IDF similarity check on incoming queries against a local cache of previously answered questions. It is not part of the main code, but was implemented as a technical spike to reduce latency. 
 
 ## Setup and Installation
 
@@ -40,11 +61,14 @@ OPENSEARCH_URL=your_opensearch_url
 OPENSEARCH_USERNAME=your_username
 OPENSEARCH_PASSWORD=your_password
 
+# Genesys Knowledge Base ID
+GENESYS_KB_ID=kb_id
+
 # Genesys Cloud (Live Agent Handoff)
 GENESYS_CLOUD_CLIENT_ID=your_id
 GENESYS_CLOUD_CLIENT_SECRET=your_secret
 GENESYS_DEPLOYMENT_ID_MOJ=your_deployment_id
-GENESYS_DEPLOYMENT_ID_HMRC=your_deployment_id
+GENESYS_DEPLOYMENT_ID_PENSIONS_FORMS_AND_RETURNS=your_deployment_id
 GENESYS_DEPLOYMENT_ID_IMMIGRATION=your_deployment_id
 GENESYS_REGION=euw2.pure.cloud
 
@@ -69,7 +93,7 @@ uid,service_name,department,phone_number,topic,user_type,tags,url,last_update,de
 1002,Self Assessment Help,HMRC,0300 987 6543,self assessment,Individual,"tax, self employed",/self-assessment-guide,2024-02-01,"Guide to filing your annual Self Assessment tax return."
 # Add more rows of relevant data...
 ```
-
+The `LocalCSVVectorStore` in data.py expects the CSV at the path defined by the KB_PATH environment variable. 
 
 
 ### 4. Usage
@@ -77,7 +101,7 @@ uid,service_name,department,phone_number,topic,user_type,tags,url,last_update,de
 #### A. Interactive Mode (Conversation Demo)
 
 Use this to see the agent handle the initial handoff and subsequent chat turns.
-(Run from ../onward-journey/app)
+(Run from ../onward-journey)
 
 ```shell
 gds-cli aws once-onwardjourney-development-admin -- uv run main.py interactive --agent_type 0
@@ -92,39 +116,39 @@ gds-cli aws once-onwardjourney-development-admin -- uv run main.py test \
     --output_dir path/to/output \
     --test_data ./ \
 uv run main.py test \
-    --kb_path ../mock_data/oj_rag_data.csv \
-    --test_data ../test_data/prototype2/test_queries_large_80.json \
+    --kb_path app/resources/data/oj_rag_data.csv \
+    --test_data app/resources/data/test_queries_large_80.json \
 ```
 
 #### C. Frontend Chat Interaction (Demo-ing)
 
 You will need two terminal windows; one to run the backend and the other for the frontend.
 
-In the first, navigate to the "app" folder and run:
+In the first, navigate to the top level directory onward-journey and run: 
 ```shell
-gds-cli aws once-onwardjourney-development-admin -- uv run uvicorn app.api.server:app --reload
+gds-cli aws once-onwardjourney-development-admin -- uv run uvicorn app.api.oj_toggle_server:app --reload
 ```
 In the second, navigate to the "frontend" folder and run:
 ```shell
 npm run dev
 ```
-Once these have been run and are hosted, go to a browser and go to http://localhost:6173/ . There you can interact with the Onward Journey Agent as a user.
+Once these have been run and are hosted, go to a browser and go to http://localhost:5173/ . There you can interact with the Onward Journey Agent as a user.
 
 #### Key Components and AWS Integration
 
 ##### 1. Bedrock Integration (`base.py`)
 
-- **Client Initialization**: The agent uses `boto3.client('bedrock-runtime', region_name=...)` for secure authentication and connection to the Bedrock service. You can pass the ARN of an IAM role to assume for calls to Bedrock via the `--role_arn` command line argument
+- **Client Initialization**: The agent uses `boto3.client('bedrock-runtime', region_name=...)` for secure authentication and connection to the Bedrock service.
 
 - **Tool Declaration**: Functions are declared using the JSON Schema format required by Anthropic's models on Bedrock.
 
-- **Inference Pipeline**: The agent uses `client.invoke_model()` to send requests. The tool-use logic involves a multi-step loop where the agent sends the prompt, receives the tool call, executes the local Python `query_csv_rag` function, and sends the results back to Bedrock as a subsequent user message for final answer generation.
+- **Inference Pipeline**: The agent uses `client.invoke_model()` to send requests. The tool-use logic involves a multi-step loop where the agent sends the prompt, receives the tool call, executes the local Python `query_internal_kb` function, and sends the results back to Bedrock as a subsequent user message for final answer generation.
 
 ##### 2. RAG Implementation (`base.py, factory.py` and `data.py`)
 
 The RAG tools are the core component that operates locally to:
 
-- Encode the user query using `Amazon Titan Text Embeddings v2` model.
+- Encode the user query using `Amazon Titan Text Embeddings v2` (specifically `amazon.titan-embed-text-v2:0`) model.
 
 - Performs Cosine Similarity against pre-computed embeddings (transformed oj_rag_data.csv data).
 
@@ -148,3 +172,9 @@ The system follows a reactive loop:
 
 ##### 5. Cache Augmented Generation (CAG)
 The `CAGQueryCache` object found in `engine.py` uses TF-IDF vectorization to check if a similar question has been answered before, reducing LLM costs and latency for common queries. 
+
+##### 6. The Handoff Gate
+The BaseAgent includes a programmatic fail-safe (_handle_handoff_gate) that intercepts tool calls to ensure triage is 100% complete before a WebSocket connection is permitted.
+
+##### 7. Svelte 5 Frontend
+The frontend (+page.svelte) uses reactive logic to intercept SIGNAL: strings from the backend to trigger connection to Genesys Cloud.
