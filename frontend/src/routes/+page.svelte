@@ -1,12 +1,10 @@
 <script lang="ts">
   import { v7 as uuid } from "uuid";
-  import SvelteMarkdown from "svelte-markdown";
-  import QuestionForm from "$lib/components/QuestionForm.svelte";
-  import ConnectionBubble from "$lib/components/ConnectionBubble.svelte";
   import LoadingAnimation from "$lib/assets/loading.svg"
-  import { hasIn } from "immutable";
-  import govUkLogo from "$lib/assets/govuk-icon.png"
+  import QuestionForm from "$lib/components/QuestionForm.svelte";
   import Footer from "$lib/components/Footer.svelte";
+  import Bubble from "$lib/components/Bubble.svelte";
+  import type { Message } from "$lib/types/Message"
 
 
   // --- Interfaces ---
@@ -17,15 +15,6 @@
     token: string;
     reason: string;
     customAttributes?: Record<string, string>;
-  }
-
-  interface Message {
-    id: string;
-    user: string;
-    message: string;
-    isSelf: boolean;
-    timestamp?: string;
-    agentId?: string;
   }
 
   // --- State ---
@@ -46,7 +35,7 @@
   let triageDisplay = $state({ active_service: "None", collected: {}, all_required: [] });
 
   // --- effect hooks ---
-    // Show more options or send button
+    // Show 'more options' or 'send' button
     $effect(() => {
       if (currentInputText !== "") {
           hasInputText = true;
@@ -54,12 +43,11 @@
           hasInputText = false;
         }
     });
-    
+
     // Auto-scroll effect
     $effect(() => {
         if (scrollContainer && chatMessages.length > 0) {
         // Small timeout ensures the DOM has rendered the new message before scrolling
-        // use await.tick() here instead
         setTimeout(() => {
             scrollContainer!.scrollTo({
             top: scrollContainer!.scrollHeight,
@@ -188,7 +176,7 @@
           id: uuid()
         }];
         isLoading = false;
-      }, 800);
+      }, 2000);
       return;
     }
 
@@ -245,12 +233,8 @@
       <div bind:this={scrollContainer} class="message-container">
         <div class="chat-feed">
             {#each chatMessages as m (m.id)}
-            <div class="ios-bubble {m.isSelf ? 'user' : 'agent'}">
-                <div class="markdown-content">
-                    <SvelteMarkdown source={m.message || ""} />
-                </div>
-            </div>
-            {/each}
+                <Bubble message={m} />
+            {/each} 
             {#if isLoading}
                 <div class="ios-typing-container">
                 <div class="ios-typing-bubble govuk-!-padding-left-3 govuk-!-padding-right-3">
@@ -261,10 +245,6 @@
             {/if}
         </div>
       </div>
-
-      <!-- <ConnectionBubble agentType="human" agentName="Home Office Resolution Center" /> -->
-
-      <!-- <div></div> place to mount agent connection bubble to-->
 
       <footer class="ios-footer-group">
         <div class="input-pill">
@@ -278,12 +258,6 @@
         <div class="homebar govuk-!-padding-top-2">
             <Footer />
         </div>
-
-        <!-- <div class="home-indicator-wrapper">
-            <div class="home-indicator">
-                <img src={govUkLogo} alt="logo" width="50%" height="50%" />
-            </div>
-        </div> -->
 
       </footer>
     </main>
@@ -358,28 +332,6 @@
     justify-content: flex-end;
     min-height: min-content;
   }
-  
-  .ios-bubble { 
-    padding: 12px 16px; 
-    border-radius: 18px; 
-    max-width: 85%; 
-    font-size: 15px; 
-    line-height: 1.5; 
-    word-wrap: break-word; 
-    box-sizing: border-box;
-  }
-  .ios-bubble.agent {
-  background: #f2f2f7;
-  color: #000;
-  align-self: flex-start;
-  border-bottom-left-radius: 4px;
-}
-.ios-bubble.user {
-  background: #007aff;
-  color: white;
-  align-self: flex-end;
-  border-bottom-right-radius: 4px;
-}
 
 /* UI Components */
 .ios-header-group {
@@ -461,15 +413,6 @@
   padding: 4px 12px;
   min-height: 38px;
   align-items: center;
-}
-
-.home-indicator {
-  width: 130px;
-  height: 5px;
-  background: #000;
-  border-radius: 10px;
-  opacity: 0.15;
-  margin: 10px auto 0;
 }
 
 /* Typing Animation */
