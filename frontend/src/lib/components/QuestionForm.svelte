@@ -1,8 +1,7 @@
 <script lang="ts">
   // Use $props() to receive the backend function from the parent
-  let { onSend } = $props<{ onSend: (text: string) => void }>();
+  let { value = $bindable(''), onSend, isLoading } = $props<{ value: string, onSend: (text: string) => void }>();
 
-  let value = $state("");
   let hasValue = $state(false);
 
   function handleSubmit(e: SubmitEvent) {
@@ -17,7 +16,7 @@
   }
 
   $effect(() => {
-    if (value !== "") {
+    if (value.trim() !== "") {
       hasValue = true;
     } else {
       hasValue = false;
@@ -25,23 +24,7 @@
   })
 </script>
 
-<form onsubmit={handleSubmit} class="app-conversation-layout__form">
-  <div class="govuk-form-group">
-    <!-- <label class="govuk-label" for="onward-journey-input">
-      Ask a question
-    </label> -->
-    <!-- <div class="flex gap-2">
-      <input
-        bind:value
-        class="text-input app-c-question-form__textarea"
-        id="onward-journey-input"
-        type="text"
-        placeholder="Ask a question..."
-      />
-      <button type="submit" class="app-c-blue-button app-c-blue-button--question-form govuk-button w-auto" data-module="govuk-button">
-        Send
-      </button>
-    </div> -->
+<form onsubmit={handleSubmit} class="layout">
      <div class="text-input-wrapper flex gap-2">
       <input
         bind:value
@@ -50,49 +33,68 @@
         type="text"
         placeholder="Ask a question..."
       />
-      <!-- {#if hasValue} 
-      <button type="submit" class="circular-button" data-module="govuk-button">
-        ^
-      </button>
+      {#if hasValue} 
+        <button type="submit" class="circular-button" data-module="govuk-button">
+          ↑
+        </button>
       {:else}
-      <button type="submit" class="circular-button" data-module="govuk-button">
-        ...
-      </button>
-      {/if} -->
+        <button 
+            class="ios-send-btn" 
+            disabled={!value.trim() || isLoading}
+            aria-label="more options"
+        > ...
+        </button>
+      {/if}
+      
     </div>
-  </div>
+  <!-- </div> -->
 </form>
 
 <style>
-  .text-input {
-    max-width: 90%;
+  .layout {
     flex-grow: 1;
+
   }
   .text-input-mobile {
     max-width: 100%;
     flex-grow: 1;
     border: none;
-  }
-  .app-c-question-form__textarea {
     border-radius: 20px;
   }
   .text-input-wrapper {
     width: 100%;
     border: none;
     position: relative;
-    display: inline-block;
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
+  .app-c-question-form__textarea {
+    border-radius: 20px;
+  }
+  .app-c-question-form__textarea:focus {
+    outline: 1px solid black;
+  }
+  .ios-send-btn {
+    width: 34px;
+    height: 34px;
+    background-color: #007aff;
+    border-radius: 50%;
+    border: none;
+    color: white;
+    flex-shrink: 1;
+    margin-bottom: 3px;
+}
   .circular-button {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     position: absolute;
-    top: 8px;
+    top: 7px;
     right: 20px;
     border: none;
-    background-color: transparent;
     cursor: pointer;
     border-radius: 50%;
-    background-color:	#1d70b8;
+    background-color: #007aff;
     color: white;
   }
 </style>

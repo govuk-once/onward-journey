@@ -1,8 +1,12 @@
 <script lang="ts">
   import { v7 as uuid } from "uuid";
-  import QuestionForm from "$lib/components/QuestionForm.svelte";
   import SvelteMarkdown from "svelte-markdown";
+  import QuestionForm from "$lib/components/QuestionForm.svelte";
   import ConnectionBubble from "$lib/components/ConnectionBubble.svelte";
+  import LoadingAnimation from "$lib/assets/loading.svg"
+  import { hasIn } from "immutable";
+  import govUkLogo from "$lib/assets/govuk-icon.png"
+
 
   // --- Interfaces ---
   interface GenesysHandoff {
@@ -24,16 +28,46 @@
   }
 
   // --- State ---
-  let ojaEnabled = $state(false);
-  let triageDisplay = $state({ active_service: "None", collected: {}, all_required: [] });
-  let scrollContainer: HTMLElement | undefined = $state();
   let { data }: { data: { messages?: Message[] } } = $props();
-  let chatMessages = $state<Message[]>(data.messages ?? []);
-  let isLoading = $state(false);
-  let isLiveChat = $state(false);
+  
+  let scrollContainer: HTMLElement | undefined = $state();
   let socket: WebSocket | null = $state(null);
   let sessionToken = $state("");
+
+  let chatMessages = $state<Message[]>(data.messages ?? []);
+  let ojaEnabled = $state(false);
+  let isLoading = $state(false);
+  let isLiveChat = $state(false);
+  
   let currentInputText = $state("");
+  let hasInputText = $state(false);
+
+  let triageDisplay = $state({ active_service: "None", collected: {}, all_required: [] });
+
+  // --- effect hooks ---
+    // Show more options or send button
+    $effect(() => {
+      if (currentInputText !== "") {
+          hasInputText = true;
+        } else {
+          hasInputText = false;
+        }
+    });
+    
+    // Auto-scroll effect
+    $effect(() => {
+        if (scrollContainer && chatMessages.length > 0) {
+        // Small timeout ensures the DOM has rendered the new message before scrolling
+        // use await.tick() here instead
+        setTimeout(() => {
+            scrollContainer!.scrollTo({
+            top: scrollContainer!.scrollHeight,
+            behavior: 'smooth'
+            });
+        }, 50);
+        }
+    });
+
 
   // --- Original Logic (Preserved) ---
   async function toggleOjaCapability() {
@@ -178,18 +212,6 @@
     }
   }
 
-  // --- Auto-scroll effect ---
-  $effect(() => {
-    if (scrollContainer && chatMessages.length > 0) {
-      // Small timeout ensures the DOM has rendered the new message before scrolling
-      setTimeout(() => {
-        scrollContainer!.scrollTo({
-          top: scrollContainer!.scrollHeight,
-          behavior: 'smooth'
-        });
-      }, 50);
-    }
-  });
 </script>
 
 <div class="workspace">
@@ -201,6 +223,7 @@
     </div>
 
     <main class="ios-screen">
+
       <header class="ios-header-group">
         <div class="govuk-banner">
           <span class="phase-tag">BETA</span> 
@@ -220,42 +243,43 @@
 
       <div bind:this={scrollContainer} class="message-container">
         <div class="chat-feed">
-          {#each chatMessages as m (m.id)}
+            {#each chatMessages as m (m.id)}
             <div class="ios-bubble {m.isSelf ? 'user' : 'agent'}">
-              <div class="markdown-content">
-                <SvelteMarkdown source={m.message || ""} />
-              </div>
+                <div class="markdown-content">
+                    <SvelteMarkdown source={m.message || ""} />
+                </div>
             </div>
-          {/each}
+            {/each}
+            {#if isLoading}
+                <div class="ios-typing-container">
+                <div class="ios-typing-bubble govuk-!-padding-left-3 govuk-!-padding-right-3">
+                    <img src={LoadingAnimation} height="15%" width="15%" alt="loading animation" />
+                    <p>GOVUK Chat is typing...</p>
+                </div>
+                </div>
+            {/if}
         </div>
       </div>
-      
+
+      <!-- <ConnectionBubble agentType="human" agentName="Home Office Resolution Center" /> -->
+
       <!-- <div></div> place to mount agent connection bubble to-->
 
       <footer class="ios-footer-group">
-        {#if isLoading}
-          <div class="ios-typing-container">
-            <div class="ios-typing-bubble">
-              <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-            </div>
-          </div>
-        {/if}
-        
-        <div class="input-bar">
-          <div class="input-pill">
+        <div class="input-pill">
             <QuestionForm 
-              bind:value={currentInputText} 
-              onSend={handleSendMessage} 
-              showButton={false} 
+                bind:value={currentInputText} 
+                onSend={handleSendMessage} 
+                {isLoading}
             />
-          </div>
-          <button 
-            class="ios-send-btn" 
-            disabled={!currentInputText.trim() || isLoading}
-            onclick={() => handleSendMessage(currentInputText)}
-          ></button>
         </div>
-        <div class="home-indicator-wrapper"><div class="home-indicator"></div></div>
+
+        <div class="home-indicator-wrapper">
+            <div class="home-indicator">
+                <img src={govUkLogo} alt="logo" width="50%" height="50%" />
+            </div>
+        </div>
+
       </footer>
     </main>
   </div>
@@ -306,7 +330,7 @@
 
   .ios-screen { 
     height: 100%; 
-    background: #ffffff; 
+    background: #e8edf4; 
     display: grid;
     grid-template-rows: auto 1fr auto; /* Header, Scroll Area, Footer */
   }
@@ -315,7 +339,6 @@
   .message-container { 
     overflow-y: auto; 
     padding: 20px 12px;
-    background: #ffffff; 
     scroll-behavior: smooth;
     display: flex;
     flex-direction: column;
@@ -340,40 +363,164 @@
     word-wrap: break-word; 
     box-sizing: border-box;
   }
-  .ios-bubble.agent { background: #f2f2f7; color: #000; align-self: flex-start; border-bottom-left-radius: 4px; }
-  .ios-bubble.user { background: #007aff; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
-  
-  /* UI Components */
-  .ios-header-group { background: #fff; z-index: 10; border-bottom: 1px solid #d1d1d6; }
-  .status-bar { display: flex; justify-content: space-between; padding: 14px 28px 4px; background: #fff; font-size: 13px; font-weight: 600; position: relative; z-index: 20; }
-  .dynamic-island { width: 110px; height: 30px; background: #000; border-radius: 20px; position: absolute; top: 8px; left: 50%; transform: translateX(-50%); }
-  
-  .govuk-banner { background: #f3f2f1; padding: 10px 16px; display: flex; align-items: center; gap: 10px; font-size: 13px; }
-  .phase-tag { background: #1d70b8; color: white; padding: 2px 6px; font-weight: bold; font-size: 11px; }
+  .ios-bubble.agent {
+  background: #f2f2f7;
+  color: #000;
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+.ios-bubble.user {
+  background: #007aff;
+  color: white;
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
 
-  .handoff-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: #fff; border-top: 1px solid #eee; }
-  .online-indicator { width: 8px; height: 8px; background: #4cd964; border-radius: 50%; display: inline-block; margin-right: 5px; }
-  .ios-close-btn { color: #007aff; border: none; background: none; font-weight: 600; cursor: pointer; font-size: 14px; }
+/* UI Components */
+.ios-header-group {
+  z-index: 10;
+  border-bottom: 1px solid #d1d1d6;
+}
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 28px 4px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  position: relative;
+  z-index: 20;
+}
+.dynamic-island {
+  width: 110px;
+  height: 30px;
+  background: #000;
+  border-radius: 20px;
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+}
 
-  /* Footer & Input */
-  .ios-footer-group { background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(10px); border-top: 1px solid #d1d1d6; padding-bottom: 20px; }
-  .input-bar { display: flex; align-items: flex-end; padding: 10px 12px; gap: 8px; }
-  .input-pill { flex: 1; background: #ffffff; border: 1px solid #d1d1d6; border-radius: 20px; padding: 4px 12px; min-height: 38px; }
-  .ios-send-btn { width: 32px; height: 32px; background-color: #007aff; border-radius: 50%; border: none; color: white; flex-shrink: 0; margin-bottom: 3px; }
-  .ios-send-btn:disabled { background-color: #d1d1d6; }
-  .ios-send-btn::after { content: "↑"; font-size: 18px; font-weight: bold; }
+.govuk-banner {
+  background: #f3f2f1;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.phase-tag {
+  background: #1d70b8;
+  color: white;
+  padding: 2px 6px;
+  font-weight: bold;
+  font-size: 11px;
+}
 
-  .home-indicator { width: 130px; height: 5px; background: #000; border-radius: 10px; opacity: 0.15; margin: 10px auto 0; }
+.handoff-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: #fff;
+  border-top: 1px solid #eee;
+}
+.online-indicator {
+  width: 8px;
+  height: 8px;
+  background: #4cd964;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 5px;
+}
+.ios-close-btn {
+  color: #007aff;
+  border: none;
+  background: none;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+}
 
-  /* Typing Animation */
-  .ios-typing-bubble { background: #f2f2f7; padding: 8px 12px; border-radius: 15px; width: fit-content; margin: 8px 0 0 12px; display: flex; gap: 4px; }
-  .dot { width: 6px; height: 6px; background: #999; border-radius: 50%; animation: blink 1.4s infinite; }
-  @keyframes blink { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+/* Footer & Input */
+.ios-footer-group {
+  backdrop-filter: blur(10px);
+  padding-bottom: 20px;
+}
+.input-pill {
+  display: flex;
+  flex: 1;
+  border: 1px solid #d1d1d6;
+  border-radius: 20px;
+  padding: 4px 12px;
+  min-height: 38px;
+  align-items: center;
+}
+.ios-send-btn {
+  width: 32px;
+  height: 32px;
+  background-color: #007aff;
+  border-radius: 50%;
+  border: none;
+  color: white;
+  flex-shrink: 1;
+  margin-bottom: 3px;
+}
+.ios-send-btn:disabled {
+  background-color: #d1d1d6;
+}
+.ios-send-btn::after {
+  content: "...";
+  font-size: 18px;
+  font-weight: bold;
+}
 
-  /* Control Panel */
-  .control-panel { width: 220px; }
-  .glass-card { background: white; padding: 20px; border-radius: 16px; border: 1px solid #d1d1d6; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
-  .pill-status { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; margin-bottom: 12px; display: inline-block; }
-  .pill-status.active { background: #00703c; color: white; }
-  .pill-status.inactive { background: #505a5f; color: white; }
+.home-indicator {
+  width: 130px;
+  height: 5px;
+  background: #000;
+  border-radius: 10px;
+  opacity: 0.15;
+  margin: 10px auto 0;
+}
+
+/* Typing Animation */
+.ios-typing-bubble {
+  background: #f2f2f7;
+  border-radius: 15px;
+  width: fit-content;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* Control Panel */
+.control-panel {
+  width: 220px;
+}
+.glass-card {
+  background: white;
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid #d1d1d6;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+.pill-status {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  margin-bottom: 12px;
+  display: inline-block;
+}
+.pill-status.active {
+  background: #00703c;
+  color: white;
+}
+.pill-status.inactive {
+  background: #505a5f;
+  color: white;
+}
+
 </style>

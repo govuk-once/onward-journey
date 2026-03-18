@@ -15,7 +15,7 @@
         },
         "human": {
             "image": humanAgentPhoto,
-            "alt": "Photo of your human chat partner",
+            "alt": "Photo of human chat partner",
             "message": (name) => `${name} has joined the chat`
         }
     };
