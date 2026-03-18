@@ -197,7 +197,7 @@ class ServiceTriageQMixin:
         return response_body['content'][0]['text']
 
     async def coordinate_service_triage(self, history: List[Dict]) -> str:
-        """"""
+        """This is the top level function that conducts slot filling for each service. """
 
         # determine which services to triage (an actively assigned one or all to begin with)
         services_to_check = {self.active_service_id: self.SERVICE_SCHEMAS[self.active_service_id]} if self.active_service_id else self.SERVICE_SCHEMAS
