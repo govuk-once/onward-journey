@@ -17,6 +17,7 @@ class GenesysServiceDiscovery:
         self.web_api = PureCloudPlatformClientV2.WebDeploymentsApi(self.api_client)
         self.arch_api = PureCloudPlatformClientV2.ArchitectApi(self.api_client)
         self.conversations_api = PureCloudPlatformClientV2.ConversationsApi(self.api_client)
+        self.knowledge_api = PureCloudPlatformClientV2.KnowledgeApi(self.api_client)
 
     def _setup_genesys_sdk(self, region = "eu_west_2"):
         """Authenticates with Genesys using the Region Enum key."""
@@ -27,6 +28,44 @@ class GenesysServiceDiscovery:
 
         except Exception as e:
             print(f"Auth Failure: {e}")
+
+    def get_all_kb_content(self, kb_id: str) -> List[Dict[str, str]]:
+        """Fetches every published article and flattens the content for embedding."""
+        all_content = []
+        try:
+            # 1. Get all document metadata
+            response = self.knowledge_api.get_knowledge_knowledgebase_documents(kb_id)
+            
+            for doc in response.entities:
+                # 2. Get the variations for the actual text
+                vars = self.knowledge_api.get_knowledge_knowledgebase_document_variations(kb_id, doc.id)
+                if vars.entities:
+                    raw_text = self._parse_blocks(vars.entities[0].body.blocks)
+                    all_content.append({
+                        "title": doc.title,
+                        "content": raw_text,
+                        "metadata": {"source": "genesys_kb", "article_id": doc.id}
+                    })
+            return all_content
+        except ApiException as e:
+            print(f"Extraction Error: {e.body}")
+            return []
+
+    def _parse_blocks(self, blocks) -> str:
+        """Helper to flatten Genesys block-based JSON into a single string."""
+        text_parts = []
+        for block in blocks:
+            # Handle Paragraph blocks which contain nested text blocks
+            if hasattr(block, 'paragraph') and block.paragraph:
+                for inner in block.paragraph.blocks:
+                    if hasattr(inner, 'text') and inner.text:
+                        text_parts.append(inner.text.text)
+            
+            # Handle top-level Text blocks directly
+            elif hasattr(block, 'text') and block.text:
+                text_parts.append(block.text.text)
+                
+        return "".join(text_parts).strip()
 
     def get_config_from_deployment(self, deployment_id: str) -> dict:
         """Safe traversal: Deployment -> Flow -> Version -> Configuration"""
@@ -59,7 +98,7 @@ class GenesysServiceDiscovery:
             print(f"Discovery Traversal Error: {e}")
             return {}
 
-    def extract_triage_data(self, config: dict):
+    def extract_triage_fields_from_flow(self, config: dict):
         """Safely extracts triage fields, returning defaults if config is empty."""
         # If config is empty, return a 'no triage required' structure
         if not config:
@@ -98,7 +137,7 @@ class GenesysServiceDiscovery:
             "prompt": global_prompt.strip()
         }
 
-async def initiate_live_handoff(reason: str, deployment_id_env: str, history: List[Dict[str, Any]], triage_data: Dict[str, Any] = {}) -> str:
+async def initiate_live_handoff(reason: str, deployment_id_env: str, history: List[Dict[str, Any]], triage_fields: Dict[str, Any] = {}) -> str:
     """Generic logic for all live chat transfers to reduce code duplication."""
     # Extract recent user queries for context summary
     user_queries = [
@@ -110,7 +149,7 @@ async def initiate_live_handoff(reason: str, deployment_id_env: str, history: Li
 
 
 
-    print('DEBUG: Triage Data for Handoff:', triage_data)
+    print('[DEBUG]: Triage Data for Handoff:', triage_fields)
 
     handoff_config = {
         "action": "initiate_live_handoff",
@@ -119,20 +158,20 @@ async def initiate_live_handoff(reason: str, deployment_id_env: str, history: Li
         "token": str(uuid.uuid4()),
         "reason": reason,
         "summary": summary,
-        "customAttributes": triage_data
+        "customAttributes": triage_fields
     }
     return f"SIGNAL: initiate_live_handoff {json.dumps(handoff_config)}"
 
-async def connect_to_moj(reason: str, history: List[Dict[str, Any]], triage_data: Dict[str, Any] = {}, **kwargs):
-    return await initiate_live_handoff(reason, 'GENESYS_DEPLOYMENT_ID_MOJ', history, triage_data)
+async def connect_to_moj(reason: str, history: List[Dict[str, Any]], triage_fields: Dict[str, Any] = {}, **kwargs):
+    return await initiate_live_handoff(reason, 'GENESYS_DEPLOYMENT_ID_MOJ', history, triage_fields)
 
-async def connect_to_immigration_and_visas(reason: str, history: List[Dict[str, Any]], triage_data: Dict[str, Any] = {}, **kwargs):
-    return await initiate_live_handoff(reason, 'GENESYS_DEPLOYMENT_ID_IMMIGRATION', history, triage_data)
+async def connect_to_immigration_and_visas(reason: str, history: List[Dict[str, Any]], triage_fields: Dict[str, Any] = {}, **kwargs):
+    return await initiate_live_handoff(reason, 'GENESYS_DEPLOYMENT_ID_IMMIGRATION', history, triage_fields)
 
-async def connect_to_hmrc(reason: str, history: List[Dict[str, Any]], triage_data: Dict[str, Any] = {}, **kwargs):
-    return await initiate_live_handoff(reason, 'GENESYS_DEPLOYMENT_ID_PENSIONS_FORMS_AND_RETURNS', history, triage_data)
+async def connect_to_hmrc(reason: str, history: List[Dict[str, Any]], triage_fields: Dict[str, Any] = {}, **kwargs):
+    return await initiate_live_handoff(reason, 'GENESYS_DEPLOYMENT_ID_PENSIONS_FORMS_AND_RETURNS', history, triage_fields)
 
-def get_triage_data():
+def get_triage_fields():
 
     department_data = {0: {"name" : "moj", "description": "Ministry of Justice", "deployment_id": os.getenv("GENESYS_DEPLOYMENT_ID_MOJ")},
                    1: {"name": "immigration_and_visas", "description": "Immigration and visas", "deployment_id": os.getenv("GENESYS_DEPLOYMENT_ID_IMMIGRATION")},
@@ -142,8 +181,8 @@ def get_triage_data():
 
     for key, dept in department_data.items():
         config = discovery.get_config_from_deployment(dept['deployment_id'])
-        triage_data = discovery.extract_triage_data(config)
-        department_data[key]['triage_data'] = triage_data
+        triage_fields = discovery.extract_triage_fields_from_flow(config)
+        department_data[key]['triage_fields'] = triage_fields
 
     return department_data
 
@@ -151,30 +190,37 @@ def get_live_chat_definitions() -> List[Dict[str, Any]]:
 
     tools_list = []
 
-    department_data = get_triage_data()
+    department_data = get_triage_fields()
 
     for _, dept in department_data.items():
 
         clean_name = dept['name'].lower().replace(" ", "_")
         short_name = re.sub(r'[^a-z0-9_]', '', clean_name)
         description = dept['description']
-        triage_data = dept['triage_data']
-        required_fields = triage_data.get('missing', [])
+        triage_fields = dept['triage_fields']
+        required_fields = triage_fields.get('missing', [])
+
+        description_text = (
+                    f"Connect to a live agent for {description}. "
+                    f"STRICT PREREQUISITES: 1. All fields must be collected: {', '.join(required_fields)}. "
+                    f"2. You MUST have already asked the user if they want to connect and received an explicit 'Yes' or 'Please'. "
+                    f"DO NOT call this tool until the user confirms they want to speak with an agent."
+                )
 
         tools_list.append({
             "name": f"connect_to_live_chat_{short_name}",
-            "description": f"Connect to a live agent for {description}. Requires: {', '.join(required_fields)} to be collected from the user first with options: {triage_data.get('field_options', {})}. Use the following prompt to ask the user for missing information: {triage_data.get('prompt', 'No specific prompt available.')}",
+            "description": description_text,            
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "reason": {"type": "string"},
-                    "triage_data": {
+                    "triage_fields": {
                         "type": "object",
                         "properties": {field: {"type": "string"} for field in required_fields},
                         "required": required_fields
                     }
                 },
-                "required": ["reason", "triage_data"],
+                "required": ["reason", "triage_fields"],
             }
         })
     return tools_list

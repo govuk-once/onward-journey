@@ -5,7 +5,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from typing import Any, Dict, List
 
-from helpers import extract_and_standardize_phone
+from app.core.data import extract_and_standardize_phone
 
 def load_test_queries(file_path: str) -> list[dict]:
     """

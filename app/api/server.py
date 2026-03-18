@@ -5,15 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from pathlib import Path
 from dotenv import load_dotenv
-from app.core.data import vectorStore
-
+from app.integrations.genesys import GenesysServiceDiscovery
+from app.core.data import LocalCSVVectorStore, GenesysCloudVectorStore
 env_path = Path(__file__).parent.parent.parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
 from app.agents.factory import OnwardJourneyAgent
-
-
-
 
 def example_handoff_pension_schemes_nohelp():
     return {'handoff_agent_id': 'GOV.UK Chat',
@@ -35,15 +32,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load Knowledge Base
+# Load OJ Knowledge Base
 KB_PATH = os.getenv("KB_PATH", "./your_kb_file.csv")
-vs = vectorStore(file_path=KB_PATH)
+vs = LocalCSVVectorStore(file_path=KB_PATH)
 
+y = GenesysServiceDiscovery()
+raw_gen_data = y.get_all_kb_content(os.getenv("GENESYS_KB_ID"))
+vs_genesys = GenesysCloudVectorStore(raw_gen_data)
 # Initialize Agent
 agent = OnwardJourneyAgent(
     handoff_package=example_handoff_pension_schemes_nohelp(),
     vector_store_embeddings=vs.get_embeddings(),
-    vector_store_chunks=vs.get_chunks())
+    vector_store_chunks=vs.get_chunks(),
+    genesys_embeddings=vs_genesys.get_embeddings(),
+    genesys_chunks=vs_genesys.get_chunks())
 
 class ChatRequest(BaseModel):
     message: str

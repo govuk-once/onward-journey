@@ -6,12 +6,17 @@ import argparse
 import numpy as np
 from datetime import datetime, timezone
 
-# Internal package imports
-from app.core.data import vectorStore
 from app.core.engine import CAGQueryCache
 from app.evaluation.test import Evaluator
+# Internal package imports
+from app.integrations.genesys import GenesysServiceDiscovery
 from app.agents import OnwardJourneyAgent, GovUKAgent, hybridAgent
+from app.core.data import LocalCSVVectorStore, GenesysCloudVectorStore
 from app.evaluation.benchmarking import load_test_queries, clarification_success_gain_metric
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Constants for default paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -32,30 +37,42 @@ class AgentRunner:
         random.seed(seed)
         np.random.seed(seed)
 
-    def _get_agent(self, vs: vectorStore, handoff_data: dict):
+    def _get_agent(self, vs_oj: LocalCSVVectorStore, vs_gen: GenesysCloudVectorStore, handoff_data: dict):
         """Factory to initialize the requested agent type with correct Top-K values."""
         agent_mapping = {
-            0: (OnwardJourneyAgent, {"top_K_OJ": self.args.top_k_oj}),
-            1: (GovUKAgent, {"top_K_govuk": self.args.top_k_govuk}),
-            2: (hybridAgent, {"top_K_OJ": self.args.top_k_oj, "top_K_govuk": self.args.top_k_govuk})
+            0: OnwardJourneyAgent,
+            1: GovUKAgent,
+            2: hybridAgent
         }
 
-        agent_cls, extra_params = agent_mapping.get(self.args.agent_type, agent_mapping[0])
+        agent_config = {
+            "model_name" : self.model_id,
+            "aws_region" : self.args.region,
+            "temperature": 0.0,
+            "handoff_package": handoff_data,
+            # data stores
+            "vector_store_embeddings" : vs_oj.get_embeddings(),
+            "vector_store_chunks": vs_oj.get_chunks(),
+            "genesys_embeddings" : vs_gen.get_embeddings(),
+            "genesys_chunks": vs_gen.get_chunks(),
+            # hyperparameters
+            "top_K_OJ": self.args.top_k_oj,
+            "top_K_govuk": self.args.top_k_govuk
+        }
 
-        return agent_cls(
-            handoff_package=handoff_data,
-            vector_store_embeddings=vs.get_embeddings(),
-            vector_store_chunks=vs.get_chunks(),
-            model_name=self.model_id,
-            aws_region=self.args.region,
-            temperature=0.0,
-            **extra_params
-        )
+        agent_cls = agent_mapping.get(self.args.agent_type, OnwardJourneyAgent)
 
+        return agent_cls(**agent_config)
+    
     async def run_interactive(self):
         """Terminal loop for real-time interaction."""
-        vs = vectorStore(file_path=self.args.kb_path)
-        agent = self._get_agent(vs, {'final_conversation_history': []})
+        vs_oj = LocalCSVVectorStore(file_path=self.args.kb_path)
+        
+        discover = GenesysServiceDiscovery()
+        raw_gen_data = discover.get_all_kb_content(os.getenv("GENESYS_KB_ID"))
+        vs_gen = GenesysCloudVectorStore(raw_gen_data)
+
+        agent = self._get_agent(vs_oj, vs_gen, {'final_conversation_history': []})
 
         print("\n" + "="*60)
         print(" AGENT (Interactive Mode) ")
@@ -118,7 +135,7 @@ class AgentRunner:
 
     def run_test(self):
         """Batch evaluation mode."""
-        vs = vectorStore(file_path=self.args.kb_path)
+        vs = LocalCSVVectorStore(file_path=self.args.kb_path)
         agent = self._get_agent(vs, {'final_conversation_history': []})
 
         pair_folder = f"oj{self.args.top_k_oj}_gov{self.args.top_k_govuk}"
