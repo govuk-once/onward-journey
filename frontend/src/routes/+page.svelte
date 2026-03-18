@@ -1,12 +1,8 @@
 <script lang="ts">
   import { v7 as uuid } from "uuid";
-  import LoadingAnimation from "$lib/assets/loading.svg"
   import QuestionForm from "$lib/components/QuestionForm.svelte";
-  import Footer from "$lib/components/Footer.svelte";
-  import Bubble from "$lib/components/Bubble.svelte";
-  import type { Message } from "$lib/types/Message"
-
-
+  import SvelteMarkdown from "svelte-markdown";
+  import LoadingCircle from "$lib/assets/loading.svg"
   // --- Interfaces ---
   interface GenesysHandoff {
     action: string;
@@ -17,62 +13,70 @@
     customAttributes?: Record<string, string>;
   }
 
-  // --- State ---
-  let { data }: { data: { messages?: Message[] } } = $props();
-  
-  let scrollContainer: HTMLElement | undefined = $state();
-  let socket: WebSocket | null = $state(null);
-  let sessionToken = $state("");
+  interface Message {
+    id: string;
+    user: string;
+    message: string;
+    isSelf: boolean;
+    timestamp?: string;
+    agentId?: string;
+  }
 
-  let chatMessages = $state<Message[]>(data.messages ?? []);
-  let ojaEnabled = $state(false);
+// --- New State for Capability Gating ---
+let ojaEnabled = $state(false);
+
+let triageDisplay = $state({
+  active_service: "None",
+  collected: {},
+  all_required: []
+});
+
+// --- New Toggle Action ---
+async function toggleOjaCapability() {
+  const nextState = !ojaEnabled;
+  try {
+    const res = await fetch(`http://localhost:8000/agent/toggle?enabled=${nextState}`, {
+      method: "POST"
+    });
+    if (res.ok) {
+      ojaEnabled = nextState;
+    }
+  } catch (err) {
+    console.error("Failed to toggle OJA:", err);
+  }
+}
+
+  // --- State ---
+  let scrollContainer: HTMLElement | undefined = $state();
+
+let { data }: { data: { messages?: Message[] } } = $props();
+let chatMessages = $state<Message[]>(data.messages ?? []);
+
   let isLoading = $state(false);
   let isLiveChat = $state(false);
-  
-  let currentInputText = $state("");
-  let hasInputText = $state(false);
+  let socket: WebSocket | null = $state(null);
+  let sessionToken = $state("");
+  let handoffProcessed = $state(false);
 
-  let triageDisplay = $state({ active_service: "None", collected: {}, all_required: [] });
-
-  // --- effect hooks ---
-    // Show 'more options' or 'send' button
-    $effect(() => {
-      if (currentInputText !== "") {
-          hasInputText = true;
-        } else {
-          hasInputText = false;
-        }
+  let handoffPackage = $state({
+      final_conversation_history: [
+        { role: "user", content: [{ type: "text", text: "I'm trying to find the line for Pension Schemes." }] },
+        { role: "assistant", content: [{ type: "text", text: "I don't have the specific phone number for HMRC Pension Schemes Services in the guidance provided.The guidance shows that you \
+    'can contact HMRC Pension Schemes Services by: using the online contact form writing to: Pension Schemes Services, HM Revenue and Customs, \
+    'BX9 1GH, United Kingdom. You can find phone contact details for other HMRC services on the Contact HMRC page. GOV.UK Chat can make mistakes. \
+    'Check GOV.UK pages for important information. GOV.UK pages used in this answer (links open in a new tab)'" }] },
+      ]
     });
 
-    // Auto-scroll effect
-    $effect(() => {
-        if (scrollContainer && chatMessages.length > 0) {
-        // Small timeout ensures the DOM has rendered the new message before scrolling
-        setTimeout(() => {
-            scrollContainer!.scrollTo({
-            top: scrollContainer!.scrollHeight,
-            behavior: 'smooth'
-            });
-        }, 50);
-        }
+  // --- Actions ---
+  function autoScroll(node: HTMLElement) {
+    const observer = new ResizeObserver(() => {
+      node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' });
     });
-
-
-  // --- Original Logic (Preserved) ---
-  async function toggleOjaCapability() {
-    const nextState = !ojaEnabled;
-    try {
-      const res = await fetch(`http://localhost:8000/agent/toggle?enabled=${nextState}`, {
-        method: "POST",
-        headers: { "Accept": "application/json" }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        ojaEnabled = data.oja_enabled;
-      }
-    } catch (err) {
-      console.error("Network error toggling capability", err);
-    }
+    observer.observe(node);
+    return {
+      destroy() { observer.disconnect(); }
+    };
   }
 
   async function manualHandBack() {
@@ -82,8 +86,11 @@
 
   async function returnToAIAgent() {
     const transcript = chatMessages
-      .filter((m) => (m.user === "Live Agent" || m.user === "You") && m.message)
-      .map((m) => ({ role: m.user === "You" ? "user" : "assistant", text: m.message }));
+      .filter( (m: Message) => (m.user === "Live Agent" || m.user === "You") && m.message)
+      .map( (m: Message) => ({
+        role: m.user === "You" ? "user" : "assistant",
+        text: m.message
+      }));
 
     if (transcript.length === 0) {
       isLiveChat = false;
@@ -96,6 +103,8 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript })
       });
+      if (!res.ok) throw new Error("Server Error");
+
       const data = await res.json();
       chatMessages = [...chatMessages, {
         message: data.summary || "I'm back. How can I help you further?",
@@ -115,342 +124,350 @@
     }
   }
 
+  async function triggerHandoffAnalysis() {
+    isLoading = true;
+    try {
+      const res = await fetch("http://localhost:8000/handoff/process", { method: "POST" });
+      if (!res.ok) throw new Error("Server error");
+      const data = await res.json();
+      chatMessages = [...chatMessages, {
+        message: data.response,
+        user: "GOV.UK Chat",
+        isSelf: false,
+        id: uuid()
+      }];
+      handoffProcessed = true;
+    } catch {
+      chatMessages = [...chatMessages, { message: "Error processing context.", user: "System", isSelf: false, id: uuid() }];
+    } finally {
+      isLoading = false;
+    }
+  }
+
   function setupGenesysSocket(config: GenesysHandoff) {
-    if (socket) socket.close();
+    if (socket) {
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onclose = null;
+      socket.close();
+    }
+
     isLiveChat = true;
     sessionToken = config.token;
     const uri = `wss://webmessaging.${config.region}/v1?deploymentId=${config.deploymentId}`;
     const newSocket = new WebSocket(uri);
     socket = newSocket;
 
+
+    console.log("Session Token:", sessionToken);
+    console.log("Attributes to send:", JSON.stringify(config.customAttributes));
+
+
     newSocket.onopen = () => {
       newSocket.send(JSON.stringify({
         action: "configureSession",
         deploymentId: config.deploymentId,
         token: sessionToken,
-        data: { customAttributes: config.customAttributes || {} }
+        data: {
+          customAttributes: config.customAttributes || {}
+        }
       }));
     };
 
-    newSocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.class === "SessionResponse" && data.code === 200) {
+  newSocket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.class === "SessionResponse" && data.code === 200) {
         const currentSessionHistory = chatMessages
-          .map((m) => `${m.timestamp ? `[${m.timestamp}] ` : ""}${m.user}: ${m.message}`)
+          .map((m: Message) => {
+            const time = m.timestamp ? `[${m.timestamp}] ` : "";
+            const agentId = m.agentId ? ` (Agent: ${m.agentId})` : "";
+            return `${time}${m.user}${agentId}: ${m.message}`;
+          })
           .join('\n');
-        const fullContext = `--- SYSTEM: HANDOFF ---\nREASON: ${config.reason}\n\nLOG:\n${currentSessionHistory}`;
+
+        const fullContext = `--- SYSTEM: CONTINUED HANDOFF CONTEXT ---\n` +
+                            `REASON: ${config.reason}\n\n` +
+                            `PREVIOUS INTERACTION LOG:\n${currentSessionHistory}`;
+
         setTimeout(() => {
-          newSocket.send(JSON.stringify({ action: "onMessage", token: sessionToken, message: { type: "Text", text: fullContext } }));
+            newSocket.send(JSON.stringify({
+                action: "onMessage",
+                token: sessionToken,
+                message: {
+                    type: "Text",
+                    text: fullContext,
+                    channel: {
+                        metadata: {
+                            customAttributes: config.customAttributes
+                        }
+                    }
+                }
+            }));
         }, 1000);
-      }
+
+        chatMessages = [...chatMessages, {
+            message: "All previous history (including prior advisors) has been shared.",
+            user: "System",
+            isSelf: false,
+            id: uuid(),
+            timestamp: new Date().toLocaleTimeString()
+        }];
+    }
+
       if (data.class === "StructuredMessage" && data.body?.text && data.body.direction === "Outbound") {
         chatMessages = [...chatMessages, {
           message: data.body.text,
           user: "Live Agent",
+          agentId: data.metadata?.externalContactId || "Advisor",
           isSelf: false,
           id: uuid(),
           timestamp: new Date().toLocaleTimeString()
         }];
       }
     };
-    newSocket.onclose = () => { isLiveChat = false; socket = null; returnToAIAgent(); };
+
+    newSocket.onclose = () => {
+      isLiveChat = false;
+      socket = null;
+      sessionToken="";
+      returnToAIAgent();
+    };
   }
 
-  async function handleSendMessage(userText: string) {
-    if (!userText.trim() || isLoading) return;
-    chatMessages = [...chatMessages, { message: userText, user: "You", isSelf: true, id: uuid() }];
-    currentInputText = ""; 
+async function handleSendMessage(userText: string) {
+  if (!userText.trim() || isLoading) return;
+  chatMessages = [...chatMessages, { message: userText, user: "You", isSelf: true, id: uuid() }];
 
-    if (isLiveChat && socket?.readyState === 1) {
-      socket.send(JSON.stringify({ action: "onMessage", token: sessionToken, message: { type: "Text", text: userText } }));
-      return;
-    }
+  if (isLiveChat && socket?.readyState === 1) {
+    // Standard Live Chat forwarding [cite: 49]
+    socket.send(JSON.stringify({ action: "onMessage", token: sessionToken, message: { type: "Text", text: userText } }));
+    return;
+  }
 
-    isLoading = true;
-    if (!ojaEnabled) {
-      setTimeout(() => {
-        chatMessages = [...chatMessages, {
-          message: "I don't have the specific phone number for HMRC Pension Schemes Services in the guidance provided. You can find phone contact details for other HMRC services on the Contact HMRC page.",
-          user: "GOV.UK Chat",
-          isSelf: false,
-          id: uuid()
-        }];
-        isLoading = false;
-      }, 2000);
-      return;
-    }
-
-    try {
-      const res = await fetch("http://localhost:8000/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText })
-      });
-      const result = await res.json();
-      if (result.response?.includes("initiate_live_handoff")) {
-        const jsonStart = result.response.indexOf('{');
-        const jsonEnd = result.response.lastIndexOf('}') + 1;
-        setupGenesysSocket(JSON.parse(result.response.substring(jsonStart, jsonEnd)));
-      } else {
-        chatMessages = [...chatMessages, { message: result.response, user: "GOV.UK Chat", isSelf: false, id: uuid() }];
-      }
-    } catch {
-      chatMessages = [...chatMessages, { message: "Connection error.", user: "System", isSelf: false, id: uuid() }];
-    } finally {
+  isLoading = true;
+  
+  // CUSTOM LOGIC: If Onward Journey Tool is OFF, simulate the GOV.UK Chat Beta response
+  if (!ojaEnabled) {
+    setTimeout(() => {
+      chatMessages = [...chatMessages, {
+        message: "I don't have the specific phone number for HMRC Pension Schemes Services in the guidance provided.The guidance shows that you \
+    'can contact HMRC Pension Schemes Services by: using the online contact form writing to: Pension Schemes Services, HM Revenue and Customs, \
+    'BX9 1GH, United Kingdom. You can find phone contact details for other HMRC services on the Contact HMRC page. GOV.UK Chat can make mistakes. \
+    'Check GOV.UK pages for important information. GOV.UK pages used in this answer (links open in a new tab)'",
+        user: "GOV.UK Chat",
+        isSelf: false,
+        id: uuid()
+      }];
       isLoading = false;
-    }
+    }, 800);
+    return;
   }
 
+  // --- Standard logic for when OJA is ON ---
+  try {
+    const res = await fetch("http://localhost:8000/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: userText })
+    });
+    const data = await res.json();
+
+    if (data.debug) {
+      triageDisplay = data.debug;
+    }
+    
+    // Handle handoff signals if OJA provides them
+    if (data.response?.includes("initiate_live_handoff")) {
+      const jsonStart = data.response.indexOf('{');
+      const jsonEnd = data.response.lastIndexOf('}') + 1;
+      const config = JSON.parse(data.response.substring(jsonStart, jsonEnd));
+      setupGenesysSocket(config);
+    } else {
+      chatMessages = [...chatMessages, {
+        message: data.response,
+        user: "GOV.UK Chat",
+        isSelf: false,
+        id: uuid()
+      }];
+    }
+  } catch {
+    chatMessages = [...chatMessages, { message: "Connection error.", user: "System", isSelf: false, id: uuid() }];
+  } finally {
+    isLoading = false;
+  }
+}
 </script>
 
-<div class="workspace">
-  <div class="iphone-frame">
-    <div class="status-bar">
-      <span class="time">9:41</span>
-      <div class="dynamic-island"></div> 
-      <div class="status-icons">📶 5G 🔋</div>
+
+
+
+<main class="app-conversation-layout__main">
+  {#if isLiveChat}
+    <div class="app-conversation-layout__header handoff-banner">
+      <div class="banner-content">
+        <p class="govuk-body"><strong>Live Chat:</strong> Connected to advisor.</p>
+      </div>
+      <div class="banner-actions">
+        <button class="govuk-button govuk-button--small govuk-!-margin-right-2" onclick={manualHandBack}>
+          Return to AI
+        </button>
+        <button class="govuk-button govuk-button--warning govuk-button--small" onclick={() => { socket?.close(); isLiveChat = false; }}>
+          End Session
+        </button>
+      </div>
     </div>
+  {/if}
 
-    <main class="ios-screen">
-
-      <header class="ios-header-group">
-        <div class="govuk-banner">
-          <span class="phase-tag">BETA</span> 
-          <p>GOV.UK Chat <span class="exp-text">Experimental</span></p>
-        </div>
-
-        {#if isLiveChat}
-          <div class="handoff-header">
-            <div class="handoff-info">
-              <span class="online-indicator"></span>
-              <p><strong>Advisor</strong></p>
-            </div> 
-            <button class="ios-close-btn" onclick={manualHandBack}>End</button>
-          </div>
-        {/if}
-      </header>
-
-      <div bind:this={scrollContainer} class="message-container">
-        <div class="chat-feed">
-            {#each chatMessages as m (m.id)}
-                <Bubble message={m} />
-            {/each} 
-            {#if isLoading}
-                <div class="ios-typing-container">
-                <div class="ios-typing-bubble govuk-!-padding-left-3 govuk-!-padding-right-3">
-                    <img src={LoadingAnimation} height="15%" width="15%" alt="loading animation" />
-                    <p>GOVUK Chat is typing...</p>
-                </div>
-                </div>
-            {/if}
+<div bind:this={scrollContainer} use:autoScroll class="app-conversation-layout__wrapper app-conversation-layout__width-restrictor">
+  <div class="message-feed">
+    {#each chatMessages as m (m.id)}
+      <div class="message-bubble {m.isSelf ? 'user' : 'agent'}">
+        <p class="govuk-body-s"><strong>{m.user}:</strong></p>
+        <div class="markdown-content">
+          <SvelteMarkdown source={m.message || ""} />
         </div>
       </div>
-
-      <footer class="ios-footer-group">
-        <div class="input-pill">
-            <QuestionForm 
-                bind:value={currentInputText} 
-                onSend={handleSendMessage} 
-                {isLoading}
-            />
-        </div>
-
-        <div class="homebar govuk-!-padding-top-2">
-            <Footer />
-        </div>
-
-      </footer>
-    </main>
+    {/each}
   </div>
-
-  <aside class="control-panel">
-    <div class="glass-card">
-      <div class="pill-status {ojaEnabled ? 'active' : 'inactive'}">
-        {ojaEnabled ? "OJ Enabled" : "OJ Disabled"}
-      </div>
-      <button class="govuk-button {ojaEnabled ? 'govuk-button--warning' : ''}" onclick={toggleOjaCapability}>
-        {ojaEnabled ? 'Disable OJ' : 'Enable OJ'}
-      </button>
+</div>
+  {#if isLoading}
+    <div class="loading-image app-conversation-layout__width-restrictor">
+      <img src={LoadingCircle} alt="Loading Circle" />
+      <span class="govuk-body govuk-hint govuk-!-margin-bottom-2">GOV.UK Chat is typing...</span>
     </div>
-  </aside>
+  {/if}
+  <div class="app-conversation-layout__fixed-footer app-conversation-layout__width-restrictor">
+    <QuestionForm onSend={handleSendMessage} />
+  </div>
+<div class="app-conversation-layout__form-region">
+  <div class="app-conversation-layout__width-restrictor govuk-!-margin-top-0">
+    <div class="capability-toggle-panel">
+      <div class="toggle-info">
+        <h3 class="govuk-heading-s govuk-!-margin-bottom-1">Agent Capability Control</h3>
+        <p class="govuk-body-s govuk-hint">
+          {ojaEnabled 
+            ? "Onward Journey is active: Can access OJ KB and Live Chat." 
+            : "Onward Journey is inactive: Limited to GOV.UK Chat Beta only."}
+        </p>
+      </div>
+        <button 
+          class="govuk-button {ojaEnabled ? 'govuk-button--warning' : ''}" 
+          onclick={toggleOjaCapability}>
+          {ojaEnabled ? 'Disable Onward Journey Tool' : 'Enable Onward Journey Tool'}
+        </button>
+      </div>
+    </div>
 </div>
 
+<hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible app-conversation-layout__width-restrictor">
+</main>
+
 <style>
-  /* GOV.UK Global Font Setup */
-  :global(body), .workspace { 
-    font-family: "GDS Transport", arial, sans-serif; 
-    -webkit-font-smoothing: antialiased; 
-    -moz-osx-font-smoothing: grayscale; 
-    margin: 0;
-  }
-
-  .workspace { 
-    display: flex; 
-    justify-content: center; 
-    align-items: center; 
-    gap: 40px; 
-    padding: 20px; 
-    background: #f2f2f7; 
-    height: 100vh;
-    box-sizing: border-box;
-  }
-  
-  /* iPhone Frame */
-  .iphone-frame { 
-    width: 375px; 
-    height: 812px; /* Standard iPhone 13 Pro height */
-    background: #000; 
-    border: 12px solid #2c2c2e; 
-    border-radius: 54px; 
-    position: relative; 
-    overflow: hidden; 
-    box-shadow: 0 40px 100px -20px rgba(0,0,0,0.3);
-  }
-
-  .ios-screen { 
-    height: 100%; 
-    background: #e8edf4; 
-    display: grid;
-    grid-template-rows: auto 1fr auto; /* Header, Scroll Area, Footer */
-  }
-  
-  /* Message Container - Fix for visibility */
-  .message-container { 
-    overflow-y: auto; 
-    padding: 20px 12px;
-    scroll-behavior: smooth;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* Chat feed starts at bottom but remains visible */
-  .chat-feed { 
-    display: flex; 
-    flex-direction: column; 
-    gap: 12px; 
-    width: 100%; 
-    justify-content: flex-end;
-    min-height: min-content;
-  }
-
-/* UI Components */
-.ios-header-group {
-  z-index: 10;
-  border-bottom: 1px solid #d1d1d6;
+/* ... Styles ... */
+.app-conversation-layout__header {
+	padding: 10px 20px;
+	border-bottom: 1px solid #b1b4b6;
+	background: #ffffff;
+	z-index: 10;
 }
-.status-bar {
-  display: flex;
-  justify-content: space-between;
-  padding: 14px 28px 4px;
-  background: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  position: relative;
-  z-index: 20;
+.handoff-banner {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin: 0;
+	border-color: #1d70b8;
 }
-.dynamic-island {
-  width: 110px;
-  height: 30px;
-  background: #000;
-  border-radius: 20px;
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
+.app-conversation-layout__wrapper {
+	flex: 1;
+	overflow-y: auto;
 }
-
-.govuk-banner {
-  background: #f3f2f1;
-  padding: 10px 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
+:global(body) {
+	font-family: "GDS Transport", arial, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 }
-.phase-tag {
-  background: #1d70b8;
-  color: white;
-  padding: 2px 6px;
-  font-weight: bold;
-  font-size: 11px;
+.app-conversation-layout__main {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	/* background-color: #ffffff; */
+  background-color: #e8f1f8;
+	overflow: hidden;
 }
-
-.handoff-header {
+.app-conversation-layout__wrapper {
+	flex: 1;
+	overflow-y: auto;
+	padding: 20px;
+	display: flex;
+	flex-direction: column;
+}
+.history-list {
+	max-height: 150px;
+	overflow-y: auto;
+	margin-bottom: 15px;
+	padding-right: 10px;
+}
+.govuk-body-s {
+	font-size: 16px;
+	margin-bottom: 8px;
+	line-height: 1.3;
+}
+.app-conversation-layout__fixed-footer {
+	border-top: 1px solid #b1b4b6;
+	padding: 15px 0;
+}
+.handoff-banner {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	border-color: #1d70b8;
+	margin-bottom: 20px;
+}
+.message-feed {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+	width: 100%;
+}
+.message-bubble {
+	padding: 15px;
+	border-radius: 4px;
+	max-width: 80%;
+	line-height: 1.5;
+}
+.message-bubble.agent {
+	background-color: #f3f2f1;
+	border-left: 4px solid #1d70b8;
+	align-self: flex-start;
+}
+.message-bubble.user {
+	background-color: #005ea5;
+	color: white;
+	align-self: flex-end;
+}
+.message-bubble.user :global(strong) {
+	color: white;
+}
+.capability-toggle-panel {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 16px;
-  background: #fff;
-  border-top: 1px solid #eee;
+  padding: 15px;
+  background-color: #f3f2f1;
+  border: 1px solid #b1b4b6;
+  border-radius: 4px;
 }
-.online-indicator {
-  width: 8px;
-  height: 8px;
-  background: #4cd964;
-  border-radius: 50%;
-  display: inline-block;
-  margin-right: 5px;
+.toggle-info h3 {
+  margin-top: 0;
 }
-.ios-close-btn {
-  color: #007aff;
-  border: none;
-  background: none;
-  font-weight: 600;
-  cursor: pointer;
-  font-size: 14px;
+.govuk-section-break {
+  margin: 20px auto;
+  width: 100%;
 }
-
-/* Footer & Input */
-.ios-footer-group {
-  backdrop-filter: blur(10px);
-  padding-bottom: 20px;
-}
-.input-pill {
+.loading-image {
   display: flex;
-  flex: 1;
-  border: 1px solid #d1d1d6;
-  border-radius: 20px;
-  padding: 4px 12px;
-  min-height: 38px;
   align-items: center;
-}
-
-/* Typing Animation */
-.ios-typing-bubble {
-  background: #f2f2f7;
-  border-radius: 15px;
-  width: fit-content;
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
-/* Control Panel */
-.control-panel {
-  width: 220px;
-}
-.glass-card {
-  background: white;
-  padding: 20px;
-  border-radius: 16px;
-  border: 1px solid #d1d1d6;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-}
-.pill-status {
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: bold;
-  margin-bottom: 12px;
-  display: inline-block;
-}
-.pill-status.active {
-  background: #00703c;
-  color: white;
-}
-.pill-status.inactive {
-  background: #505a5f;
-  color: white;
 }
 
 </style>

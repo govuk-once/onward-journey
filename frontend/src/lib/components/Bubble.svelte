@@ -4,7 +4,6 @@
     import type { Message } from "$lib/types/Message";
 
     let { message } = $props<{message: Message}>();
-    $inspect("Message: ", message);
 </script>
 
 {#if message?.messageType === "agent-transfer" && message.agentType === "human"}
