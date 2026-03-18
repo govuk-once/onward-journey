@@ -1,18 +1,41 @@
 <script lang="ts">
-  // Use $props() to receive the backend function from the parent
-  let { value = $bindable(''), onSend, isLoading } = $props<{ value: string, onSend: (text: string) => void }>();
+  let { value = $bindable(''), isLoading, onSend } = $props<{ 
+                                                      value: string, 
+                                                      isLoading: boolean
+                                                      onSend: (text: string) => void 
+                                                    }>();
 
-  let hasValue = $state(false);
+  let hasValue: boolean = $state(false);
+  let textArea = $state(null as HTMLTextAreaElement | null)
 
-  function handleSubmit(e: SubmitEvent) {
+  function handleSubmit(e: Event) {
     e.preventDefault();
     if (!value.trim()) return;
 
-    // Trigger the parent's function
     onSend(value);
 
-    // Clear the input
     value = "";
+  }
+
+  const submitOnEnter = (event: KeyboardEvent) => {
+      if (event.key === "Enter") {
+        handleSubmit(event)
+
+        if (!textArea) {
+          return;
+        }
+        textArea.style.height = "auto";
+      }
+    }
+
+
+  const adjustTextAreaSize = () => {
+    if (!textArea) {
+      return;
+    }
+    
+    textArea.style.height = "auto";
+    textArea.style.height = `${textArea.scrollHeight}px`
   }
 
   $effect(() => {
@@ -25,29 +48,33 @@
 </script>
 
 <form onsubmit={handleSubmit} class="layout">
-     <div class="text-input-wrapper flex gap-2">
-      <input
+     <div class="text-input-wrapper">
+      <textarea
         bind:value
+        bind:this={textArea}
         class="text-input-mobile app-c-question-form__textarea govuk-!-padding-right-2"
         id="onward-journey-input"
-        type="text"
         placeholder="Ask a question..."
-      />
+        rows=1
+        oninput={adjustTextAreaSize}
+        onkeydown={submitOnEnter}
+      ></textarea>
       {#if hasValue} 
         <button type="submit" class="circular-button" data-module="govuk-button">
           ↑
         </button>
       {:else}
         <button 
-            class="ios-send-btn" 
+            class="circular-button" 
             disabled={!value.trim() || isLoading}
             aria-label="more options"
-        > ...
+            onclick={handleSubmit}
+        > 
+          ...
         </button>
       {/if}
       
     </div>
-  <!-- </div> -->
 </form>
 
 <style>
@@ -60,6 +87,10 @@
     flex-grow: 1;
     border: none;
     border-radius: 20px;
+    height: auto;
+    overflow: hidden;
+    resize: none;
+    line-height: 1.2;
   }
   .text-input-wrapper {
     width: 100%;
@@ -75,7 +106,7 @@
   .app-c-question-form__textarea:focus {
     outline: 1px solid black;
   }
-  .ios-send-btn {
+  .circular-button {
     width: 34px;
     height: 34px;
     background-color: #007aff;
@@ -85,16 +116,7 @@
     flex-shrink: 1;
     margin-bottom: 3px;
 }
-  .circular-button {
-    width: 32px;
-    height: 32px;
-    position: absolute;
-    top: 7px;
-    right: 20px;
-    border: none;
-    cursor: pointer;
-    border-radius: 50%;
-    background-color: #007aff;
-    color: white;
-  }
+.circular-button:disabled {
+  background-color: grey;
+}
 </style>

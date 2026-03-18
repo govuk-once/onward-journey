@@ -6,6 +6,7 @@
   import LoadingAnimation from "$lib/assets/loading.svg"
   import { hasIn } from "immutable";
   import govUkLogo from "$lib/assets/govuk-icon.png"
+  import Footer from "$lib/components/Footer.svelte";
 
 
   // --- Interfaces ---
@@ -274,11 +275,15 @@
             />
         </div>
 
-        <div class="home-indicator-wrapper">
+        <div class="homebar govuk-!-padding-top-2">
+            <Footer />
+        </div>
+
+        <!-- <div class="home-indicator-wrapper">
             <div class="home-indicator">
                 <img src={govUkLogo} alt="logo" width="50%" height="50%" />
             </div>
-        </div>
+        </div> -->
 
       </footer>
     </main>
@@ -456,24 +461,6 @@
   padding: 4px 12px;
   min-height: 38px;
   align-items: center;
-}
-.ios-send-btn {
-  width: 32px;
-  height: 32px;
-  background-color: #007aff;
-  border-radius: 50%;
-  border: none;
-  color: white;
-  flex-shrink: 1;
-  margin-bottom: 3px;
-}
-.ios-send-btn:disabled {
-  background-color: #d1d1d6;
-}
-.ios-send-btn::after {
-  content: "...";
-  font-size: 18px;
-  font-weight: bold;
 }
 
 .home-indicator {
