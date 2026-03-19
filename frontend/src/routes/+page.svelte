@@ -2,6 +2,7 @@
   import { v7 as uuid } from "uuid";
   import QuestionForm from "$lib/components/QuestionForm.svelte";
   import SvelteMarkdown from "svelte-markdown";
+  import LoadingCircle from "$lib/assets/loading.svg"
   // --- Interfaces ---
   interface GenesysHandoff {
     action: string;
@@ -21,33 +22,27 @@
     agentId?: string;
   }
 
-// --- New State for Capability Gating
+// --- New State for Capability Gating ---
 let ojaEnabled = $state(false);
 
+let triageDisplay = $state({
+  active_service: "None",
+  collected: {},
+  all_required: []
+});
 
-
+// --- New Toggle Action ---
 async function toggleOjaCapability() {
   const nextState = !ojaEnabled;
-  
   try {
-    // Ensure the port (8000) matches Uvicorn startup port
     const res = await fetch(`http://localhost:8000/agent/toggle?enabled=${nextState}`, {
-      method: "POST",
-      headers: {
-        "Accept": "application/json"
-      }
+      method: "POST"
     });
-
     if (res.ok) {
-      const data = await res.json();
-      ojaEnabled = data.oja_enabled; // Use the server's confirmed state
-      console.log("Toggle successful:", data);
-    } else {
-      const errorData = await res.json();
-      console.error("Server rejected toggle:", errorData);
+      ojaEnabled = nextState;
     }
   } catch (err) {
-    console.error("Network error - is the backend running on port 8000?", err);
+    console.error("Failed to toggle OJA:", err);
   }
 }
 
@@ -61,6 +56,7 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
   let isLiveChat = $state(false);
   let socket: WebSocket | null = $state(null);
   let sessionToken = $state("");
+  let handoffProcessed = $state(false);
 
   // --- Actions ---
   function autoScroll(node: HTMLElement) {
@@ -117,7 +113,6 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
       isLiveChat = false;
     }
   }
-
   function setupGenesysSocket(config: GenesysHandoff) {
     if (socket) {
       socket.onopen = null;
@@ -208,12 +203,13 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
       returnToAIAgent();
     };
   }
+
 async function handleSendMessage(userText: string) {
   if (!userText.trim() || isLoading) return;
   chatMessages = [...chatMessages, { message: userText, user: "You", isSelf: true, id: uuid() }];
 
   if (isLiveChat && socket?.readyState === 1) {
-    // Standard Live Chat forwarding 
+    // Standard Live Chat forwarding [cite: 49]
     socket.send(JSON.stringify({ action: "onMessage", token: sessionToken, message: { type: "Text", text: userText } }));
     return;
   }
@@ -245,6 +241,10 @@ async function handleSendMessage(userText: string) {
       body: JSON.stringify({ message: userText })
     });
     const data = await res.json();
+
+    if (data.debug) {
+      triageDisplay = data.debug;
+    }
     
     // Handle handoff signals if OJA provides them
     if (data.response?.includes("initiate_live_handoff")) {
@@ -267,7 +267,6 @@ async function handleSendMessage(userText: string) {
   }
 }
 </script>
-
 
 <main class="app-conversation-layout__main">
   {#if isLiveChat}
@@ -298,51 +297,117 @@ async function handleSendMessage(userText: string) {
     {/each}
   </div>
 </div>
-  <div class="app-conversation-layout__fixed-footer app-conversation-layout__width-restrictor">
-    {#if isLoading}
-      <div class="govuk-body govuk-hint govuk-!-margin-bottom-2">GOV.UK Chat is typing...</div>
-    {/if}
-    <QuestionForm onSend={handleSendMessage} />
-  </div>
-<div class="app-conversation-layout__width-restrictor govuk-!-margin-top-0">
-  <div class="capability-toggle-panel">
-    <div class="toggle-info">
-      <h3 class="govuk-heading-s govuk-!-margin-bottom-1">Agent Capability Control</h3>
-      <p class="govuk-body-s govuk-hint">
-        {ojaEnabled 
-          ? "Onward Journey is active: Can access OJ KB and Live Chat." 
-          : "Onward Journey is inactive: Limited to GOV.UK Chat Beta only."}
-      </p>
+  {#if isLoading}
+    <div class="loading-image app-conversation-layout__width-restrictor">
+      <img src={LoadingCircle} alt="Loading Circle" />
+      <span class="govuk-body govuk-hint govuk-!-margin-bottom-2">GOV.UK Chat is typing...</span>
     </div>
-    <button 
-      class="govuk-button {ojaEnabled ? 'govuk-button--warning' : ''}" 
-      onclick={toggleOjaCapability}>
-      {ojaEnabled ? 'Disable Onward Journey Tool' : 'Enable Onward Journey Tool'}
-    </button>
+  {/if}
+  <div class="app-conversation-layout__fixed-footer app-conversation-layout__width-restrictor">
+  <QuestionForm onSend={handleSendMessage} />
   </div>
+<div class="app-conversation-layout__form-region">
+  <div class="app-conversation-layout__width-restrictor govuk-!-margin-top-0">
+    <div class="capability-toggle-panel">
+      <div class="toggle-info">
+        <h3 class="govuk-heading-s govuk-!-margin-bottom-1">Agent Capability Control</h3>
+        <p class="govuk-body-s govuk-hint">
+          {ojaEnabled 
+            ? "Onward Journey is active: Can access OJ KB and Live Chat." 
+            : "Onward Journey is inactive: Limited to GOV.UK Chat Beta only."}
+        </p>
+      </div>
+        <button 
+          class="govuk-button {ojaEnabled ? 'govuk-button--warning' : ''}" 
+          onclick={toggleOjaCapability}>
+          {ojaEnabled ? 'Disable Onward Journey Tool' : 'Enable Onward Journey Tool'}
+        </button>
+      </div>
+    </div>
 </div>
 
 <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible app-conversation-layout__width-restrictor">
 </main>
 
 <style>
-/* ... Styles ... */
-.app-conversation-layout__header { padding: 10px 20px;
-   border-bottom: 1px solid #b1b4b6; background: #ffffff; z-index: 10; }
-.handoff-banner { display: flex; justify-content: space-between; align-items: center; margin: 0; border-color: #1d70b8; }
-.app-conversation-layout__wrapper { flex: 1; overflow-y: auto; }
-:global(body) { font-family: "GDS Transport", arial, sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-.app-conversation-layout__main { display: flex; flex-direction: column; height: 100vh; background-color: #ffffff; overflow: hidden; }
-.app-conversation-layout__wrapper { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; }
-.history-list { max-height: 150px; overflow-y: auto; margin-bottom: 15px; padding-right: 10px; }
-.govuk-body-s { font-size: 16px; margin-bottom: 8px; line-height: 1.3; }
-.app-conversation-layout__fixed-footer { background: white; border-top: 1px solid #b1b4b6; padding: 15px 0; }
-.handoff-banner { display: flex; justify-content: space-between; align-items: center; border-color: #1d70b8; margin-bottom: 20px; }
-.message-feed { display: flex; flex-direction: column; gap: 20px; width: 100%; }
-.message-bubble { padding: 15px; border-radius: 4px; max-width: 80%; line-height: 1.5; }
-.message-bubble.agent { background-color: #f3f2f1; border-left: 4px solid #1d70b8; align-self: flex-start; }
-.message-bubble.user { background-color: #005ea5; color: white; align-self: flex-end; }
-.message-bubble.user :global(strong) { color: white; }
+.app-conversation-layout__header {
+	padding: 10px 20px;
+	border-bottom: 1px solid #b1b4b6;
+	background: #ffffff;
+	z-index: 10;
+}
+.handoff-banner {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin: 0;
+	border-color: #1d70b8;
+}
+.app-conversation-layout__wrapper {
+	flex: 1;
+	overflow-y: auto;
+}
+:global(body) {
+	font-family: "GDS Transport", arial, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+.app-conversation-layout__main {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	/* background-color: #ffffff; */
+  background-color: #e8f1f8;
+	overflow: hidden;
+}
+.app-conversation-layout__wrapper {
+	flex: 1;
+	overflow-y: auto;
+	padding: 20px;
+	display: flex;
+	flex-direction: column;
+}
+.govuk-body-s {
+	font-size: 16px;
+	margin-bottom: 8px;
+	line-height: 1.3;
+}
+.app-conversation-layout__fixed-footer {
+	border-top: 1px solid #b1b4b6;
+	padding: 15px 0;
+}
+.handoff-banner {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	border-color: #1d70b8;
+	margin-bottom: 20px;
+}
+.message-feed {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+	width: 100%;
+}
+.message-bubble {
+	padding: 15px;
+	border-radius: 4px;
+	max-width: 80%;
+	line-height: 1.5;
+}
+.message-bubble.agent {
+	background-color: #f3f2f1;
+	border-left: 4px solid #1d70b8;
+	align-self: flex-start;
+}
+.message-bubble.user {
+	background-color: #005ea5;
+	color: white;
+	align-self: flex-end;
+}
+.message-bubble.user :global(strong) {
+	color: white;
+}
 .capability-toggle-panel {
   display: flex;
   justify-content: space-between;
@@ -352,14 +417,15 @@ async function handleSendMessage(userText: string) {
   border: 1px solid #b1b4b6;
   border-radius: 4px;
 }
-
 .toggle-info h3 {
   margin-top: 0;
 }
-
 .govuk-section-break {
   margin: 20px auto;
   width: 100%;
 }
-
+.loading-image {
+  display: flex;
+  align-items: center;
+}
 </style>
