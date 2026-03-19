@@ -2,6 +2,7 @@
 	import { resolve } from "$app/paths";
 	import GovUKLogo from "$lib/components/GovUKLogo.svelte";
   import "../app.scss";
+  import '$lib/styles/stylesheet.scss';
 
 	let { children } = $props();
 </script>
