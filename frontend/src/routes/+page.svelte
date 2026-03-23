@@ -24,7 +24,7 @@
 
 // --- New State for Capability Gating ---
 let ojaEnabled = $state(false);
-
+let currentInputText = $state("");
 let triageDisplay = $state({
   active_service: "None",
   collected: {},
@@ -50,7 +50,15 @@ async function toggleOjaCapability() {
   let scrollContainer: HTMLElement | undefined = $state();
 
 let { data }: { data: { messages?: Message[] } } = $props();
-let chatMessages = $state<Message[]>(data.messages ?? []);
+
+// Use an effect to sync the prop to your state if the prop changes
+let chatMessages = $state<Message[]>([]);
+
+$effect(() => {
+  if (data.messages) {
+    chatMessages = data.messages;
+  }
+});
 
   let isLoading = $state(false);
   let isLiveChat = $state(false);
@@ -309,9 +317,13 @@ async function handleSendMessage(userText: string) {
       <span class="govuk-body govuk-hint govuk-!-margin-bottom-2">GOV.UK Chat is typing...</span>
     </div>
   {/if}
-  <div class="app-conversation-layout__fixed-footer app-conversation-layout__width-restrictor">
-  <QuestionForm onSend={handleSendMessage} />
-  </div>
+<div class="app-conversation-layout__fixed-footer app-conversation-layout__width-restrictor">
+  <QuestionForm 
+    onSend={handleSendMessage} 
+    {isLoading} 
+    value={currentInputText} 
+  />
+</div>
 <div class="app-conversation-layout__form-region">
   <div class="app-conversation-layout__width-restrictor govuk-!-margin-top-0">
     <div class="capability-toggle-panel">

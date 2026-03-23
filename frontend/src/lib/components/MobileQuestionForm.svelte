@@ -1,8 +1,13 @@
 <script lang="ts">
-  let { value = $bindable(''), onSend } = $props<{ 
-                                                      value: string, 
-                                                      onSend: (text: string) => void 
-                                                    }>();
+let { 
+  value = $bindable(''), 
+  isLoading,    
+  onSend 
+} = $props<{ 
+  value: string, 
+  isLoading: boolean,
+  onSend: (text: string) => void 
+}>();
 
   let textArea = $state(null as HTMLTextAreaElement | null)
 
