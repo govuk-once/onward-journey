@@ -1,42 +1,39 @@
 <script lang="ts">
-  import { v7 as uuid } from "uuid";
-  import LoadingAnimation from "$lib/assets/loading.svg"
-  import MobileQuestionForm from "$lib/components/MobileQuestionForm.svelte";
-  import Footer from "$lib/components/Footer.svelte";
-  import Bubble from "$lib/components/Bubble.svelte";
-  import ConnectionBubble from "$lib/components/ConnectionBubble.svelte";
-  import rightSideIcon from "$lib/assets/rightside.svg"
-  import sendarrow from "$lib/assets/send-icon.svg"
-  import type { Message } from "$lib/types/Message"
+import { v7 as uuid } from "uuid";
+import LoadingAnimation from "$lib/assets/loading.svg"
+import MobileQuestionForm from "$lib/components/MobileQuestionForm.svelte";
+import Footer from "$lib/components/Footer.svelte";
+import Bubble from "$lib/components/Bubble.svelte";
+import ConnectionBubble from "$lib/components/ConnectionBubble.svelte";
+import rightSideIcon from "$lib/assets/rightside.svg"
+import sendarrow from "$lib/assets/send-icon.svg"
+import type { Message } from "$lib/types/Message"
 
 let agentThoughts = $state<string[]>(["System initialized. Awaiting user input..."]);
-  // --- State ---
-  let { data }: { data: { messages?: Message[] } } = $props();
-  let scrollContainer: HTMLElement | undefined = $state();
-  let socket: WebSocket | null = $state(null);
-  let sessionToken = $state("");
-  let chatMessages = $state<Message[]>(data.messages ?? []);
+let { data }: { data: { messages?: Message[] } } = $props();
+let scrollContainer = $state<HTMLElement | undefined>(); // Fixed type syntax
+let socket = $state<WebSocket | null>(null);
+let sessionToken = $state("");
+let chatMessages = $state<Message[]>(data.messages ?? []);
   
-  let ojaEnabled = $state(false); 
-  let isLoading = $state(false);
-  let isLiveChat = $state(false);
-  let currentInputText = $state("");
-  let hasInputText = $state(false);
-  // --- effect hooks ---
-  $effect(() => {
-    hasInputText = currentInputText !== ""; 
-  });
+let ojaEnabled = $state(false); 
+let isLoading = $state(false);
+let isLiveChat = $state(false);
+let currentInputText = $state("");
+let hasInputText = $derived(currentInputText !== "");
 
-  $effect(() => {
-    if (scrollContainer && chatMessages.length > 0) {
-      setTimeout(() => {
-        scrollContainer!.scrollTo({
-          top: scrollContainer!.scrollHeight,
-          behavior: 'smooth'
-        });
-      }, 50);
-    }
-  });
+$effect(() => {
+  if (scrollContainer && chatMessages.length > 0) {
+    // We use untrack or just a simple timeout to ensure the DOM has updated
+    const timer = setTimeout(() => {
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: 'smooth'
+      });
+    }, 50);
+    return () => clearTimeout(timer); // Cleanup is good practice
+  }
+});
 
   // --- Logic ---
   async function toggleOjaCapability() {
@@ -50,11 +47,6 @@ let agentThoughts = $state<string[]>(["System initialized. Awaiting user input..
     } catch (err) {
       console.error("Network error toggling capability", err);
     }
-  }
-
-  function manualHandBack() {
-    if (!socket) return;
-    socket.close();
   }
 
   async function returnToAIAgent() {
