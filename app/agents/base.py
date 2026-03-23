@@ -290,7 +290,7 @@ class BaseAgent:
             self.system_instruction = ""
             self.prompt_guidance = PromptGuidance()
             self.triage_state = {}
-
+            self.logs = []
     def _add_to_history(self, role: str, text: str = '', tool_calls: list = [], tool_results: list = []):
         """Standardized history management for all subclasses."""
         message = {"role": role, "content": []}
@@ -298,6 +298,11 @@ class BaseAgent:
         if tool_calls: message["content"].extend(tool_calls)
         if tool_results: message["content"].extend(tool_results)
         self.history.append(message)
+
+    def _log_thought(self, message: str):
+            """Helper to print to console AND save for the frontend."""
+            print(f"[AGENT_THOUGHT]: {message}")
+            self.logs.append(message)
 
     async def _execute_tool(self, tool_use_block: Dict[str, Any]) -> str:
         tool_name = tool_use_block['name']
@@ -368,6 +373,7 @@ class BaseAgent:
         print(f"[DEBUG - HANDOFF GATE]: Checking {service_id}")
         # check: is local state already complete?
         if not self._is_triage_complete(service_id):
+            self._log_thought('Triage not fully completed, I\'m attempting a final extraction.') 
             print(f"[DEBUG - HANDOFF GATE]: Triage incomplete. Attempting final extraction.")
             slot_report  = await self.slot_extraction(service_id, self.history)
             final_report = {**self.triage_state, **slot_report.get("extracted", {})}
@@ -376,6 +382,8 @@ class BaseAgent:
             missing_now = [f for f in required if f not in final_report]
 
             if missing_now:
+                self._log_thought(f"HANDOFF_BLOCKED: Information missing for {service_id}: {missing_now}."
+                        f"INSTRUCTION: Ask the user for this missing information using {slot_report.get('follow up')}")
                 print(f"[DEBUG - HANDOFF GATE]: BLOCKED! Missing: {missing_now}")
                 return (f"HANDOFF_BLOCKED: Information missing for {service_id}: {missing_now}."
                         f"INSTRUCTION: Ask the user for this missing information using {slot_report.get('follow up')}")
@@ -383,6 +391,7 @@ class BaseAgent:
             # sync state 
             self.triage_state.update(slot_report.get("extracted"), {})
         print(f"[DEBUG - HANDOFF GATE]: PASSED. Executing {tool_name}")
+        self._log_thought(f"HANDOFF GATE PASSED. Executing {tool_name}")
         args['triage_fields'] = self.triage_state
 
         func = self.available_tools[tool_name]
@@ -400,15 +409,24 @@ class BaseAgent:
 
         loop_count = 0
         triage_injected = False 
+
+
+        last_triage_log = ""
+
         while True:
             loop_count += 1
             print(f"\n[DEBUG - LOOP ITERATION]: {loop_count}")
             # Refresh triage injection every loop so the LLM sees what it just collected
             triage_injection = ""
-            
+
             if hasattr(self, 'coordinate_service_triage') and not triage_injected:
                 triage_injection = await self.coordinate_service_triage(self.history)
-                print('[TRIAGE INJECTION]:', triage_injection)
+                if triage_injection and triage_injection != last_triage_log:
+                        self._log_thought(f"TRIAGE UPDATED: {triage_injection}")
+                        last_triage_log = triage_injection
+                
+                if triage_injection:
+                    print('[TRIAGE INJECTION]:', triage_injection)
                 triage_injected = True 
             effective_system_instruction = self.prompt_guidance.compose_system_instruction(
                 self.system_instruction + triage_injection,
@@ -422,9 +440,11 @@ class BaseAgent:
             text = next((c['text'] for c in content if c['type'] == 'text'), None)
             tool_use = [c for c in content if c['type'] == 'tool_use']
 
-            if text: print(f"[DEBUG - ASSISTANT TEXT]: {text}")
-            if tool_use: print(f"[DEBUG - TOOL CALLS]: {[t['name'] for t in tool_use]}")
-
+            if text: 
+                print(f"[DEBUG - ASSISTANT TEXT]: {text}")
+            if tool_use: 
+                print(f"[DEBUG - TOOL CALLS]: {[t['name'] for t in tool_use]}")
+                self._log_thought(f"LLM decided to use tools: {[t['name'] for t in tool_use]}")
             self._add_to_history("assistant", text, tool_calls=tool_use)
 
             if not tool_use:
@@ -435,6 +455,7 @@ class BaseAgent:
             for call in tool_use:
 
                 out = await self._execute_tool(call)
+                self._log_thought(f"Here is the TOOL RESULT: {call['name']} -> {str(out)[:100]}...")
                 print(f"[DEBUG - TOOL RESULT]: {call['name']} -> {str(out)[:100]}...") # Truncated for readability
                 results.append({
                     "type": "tool_result",
@@ -445,4 +466,5 @@ class BaseAgent:
             self._add_to_history("user", tool_results=results)
 
             if "SIGNAL: initiate_live_handoff" in str(out):
+                self._log_thought(f"Finalizing handoff, as the handoff signal is present")
                 return await self._finalize_handoff(effective_system_instruction, out)
