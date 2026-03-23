@@ -9,13 +9,24 @@ import rightSideIcon from "$lib/assets/rightside.svg"
 import sendarrow from "$lib/assets/send-icon.svg"
 import type { Message } from "$lib/types/Message"
 
+  interface GenesysHandoff {
+    action: string;
+    deploymentId: string;
+    region: string;
+    token: string;
+    reason: string;
+    customAttributes?: Record<string, string>;
+  }
+
 let agentThoughts = $state<string[]>(["System initialized. Awaiting user input..."]);
 let { data }: { data: { messages?: Message[] } } = $props();
 let scrollContainer = $state<HTMLElement | undefined>(); // Fixed type syntax
 let socket = $state<WebSocket | null>(null);
 let sessionToken = $state("");
 let chatMessages = $state<Message[]>(data.messages ?? []);
-  
+
+let debugScrollContainer = $state<HTMLElement | undefined>();
+
 let ojaEnabled = $state(false); 
 let isLoading = $state(false);
 let isLiveChat = $state(false);
@@ -33,6 +44,14 @@ $effect(() => {
     }, 50);
     return () => clearTimeout(timer); // Cleanup is good practice
   }
+});
+
+$effect(() => {
+  [scrollContainer, debugScrollContainer].forEach(container => {
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    }
+  });
 });
 
   // --- Logic ---
@@ -84,8 +103,7 @@ $effect(() => {
     }
   }
 
-  // --- UPDATED SOCKET LOGIC WITH SUMMARY HANDOFF ---
-  function setupGenesysSocket(config: any) {
+  function setupGenesysSocket(config: GenesysHandoff) {
     if (socket) socket.close();
     isLiveChat = true;
     sessionToken = config.token;
@@ -292,12 +310,12 @@ $effect(() => {
 
     <div class="debug-scroll-area" bind:this={debugScrollContainer}>
       <div class="debug-log-container">
-        {#each agentThoughts as thought}
-          <div class="thought-entry">
-            <span class="timestamp">{new Date().toLocaleTimeString()}</span>
-            <p>{thought}</p>
-          </div>
-        {/each}
+          {#each agentThoughts as thought, i (i)}
+            <div class="thought-entry">
+              <span class="timestamp">{new Date().toLocaleTimeString()}</span>
+              <p>{thought}</p>
+            </div>
+          {/each}
       </div>
     </div>
   </main>

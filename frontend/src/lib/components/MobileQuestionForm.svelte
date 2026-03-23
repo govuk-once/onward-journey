@@ -5,7 +5,6 @@
                                                       onSend: (text: string) => void 
                                                     }>();
 
-  let hasValue: boolean = $state(false);
   let textArea = $state(null as HTMLTextAreaElement | null)
 
   function handleSubmit(e: Event) {
@@ -28,13 +27,6 @@
       }
     }
 
-  $effect(() => {
-    if (value.trim() !== "") {
-      hasValue = true;
-    } else {
-      hasValue = false;
-    }
-  })
 </script>
 
 <form onsubmit={handleSubmit} class="layout">
