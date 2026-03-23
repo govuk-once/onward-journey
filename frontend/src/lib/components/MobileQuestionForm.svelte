@@ -1,11 +1,9 @@
 <script lang="ts">
 let { 
   value = $bindable(''), 
-  isLoading,    
   onSend 
 } = $props<{ 
   value: string, 
-  isLoading: boolean,
   onSend: (text: string) => void 
 }>();
 

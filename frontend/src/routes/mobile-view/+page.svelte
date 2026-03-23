@@ -19,11 +19,21 @@ import type { Message } from "$lib/types/Message"
   }
 
 let agentThoughts = $state<string[]>(["System initialized. Awaiting user input..."]);
+
 let { data }: { data: { messages?: Message[] } } = $props();
+
+// Use an effect to sync the prop to your state if the prop changes
+let chatMessages = $state<Message[]>([]);
+
+$effect(() => {
+  if (data.messages) {
+    chatMessages = data.messages;
+  }
+});
+
 let scrollContainer = $state<HTMLElement | undefined>(); // Fixed type syntax
 let socket = $state<WebSocket | null>(null);
 let sessionToken = $state("");
-let chatMessages = $state<Message[]>(data.messages ?? []);
 
 let debugScrollContainer = $state<HTMLElement | undefined>();
 
@@ -244,30 +254,30 @@ $effect(() => {
         </div>
       </header>
 
-      <div class="chat-container">
-        <div bind:this={scrollContainer} class="message-container"> 
-          <div class="chat-feed">
-              {#each chatMessages as m (m.id)}
-                  {#if m.message === "EVENT_HUMAN_CONNECTED"}
-                      <ConnectionBubble agentType="human" agentName="Caspar" />
-                  {:else}
-                      <Bubble message={m} />
-                  {/if}
-              {/each} 
-              {#if isLoading}
-                  <div class="ios-typing-container">
-                    <div class="ios-typing-bubble">
-                        <img src={LoadingAnimation} height="15%" width="15%" alt="loading" />
-                        <p>Generating your answer...</p>
-                    </div>
-                  </div>
-              {/if}
+<div class="chat-container">
+  <div bind:this={scrollContainer} class="message-container">
+    <div class="chat-feed">
+      {#each chatMessages as m (m.id)}
+        {#if m.message === "EVENT_HUMAN_CONNECTED"}
+          <ConnectionBubble agentType="human" agentName="Caspar" />
+        {:else}
+          <Bubble message={m} />
+        {/if}
+      {/each} 
+
+      {#if isLoading}
+        <div class="ios-typing-container">
+          <div class="ios-typing-bubble">
+            <img src={LoadingAnimation} height="15%" width="15%" alt="loading" />
+            <p>Generating your answer...</p>
           </div>
         </div>
+      {/if}
+    </div> </div> </div> ```
 <div class="input-area-blue">
   <div class="input-pill-container"> 
       <div class="input-pill">
-          <MobileQuestionForm bind:value={currentInputText} onSend={handleSendMessage} {isLoading} />
+          <MobileQuestionForm bind:value={currentInputText} onSend={handleSendMessage} />
       </div>
       
       <button 
@@ -496,44 +506,6 @@ $effect(() => {
   background: #1D70B8;
   border-radius: 10px;
 }
-
-.debug-screen {
-  background: #E8F1F8; /* Dark terminal background */
-  color: black; /* Classic "terminal green" text */
-  font-family: "GDS Transport";
-  padding: 15px;
-  font-size: 11px;
-}
-
-.debug-screen {
-  background: #E8F1F8;
-  color: black;
-  font-family: "GDS Transport";
-  padding: 15px; 
-  font-size: 11px; 
-  overflow-y: auto; /* Enables the vertical scrollbar */
-  scrollbar-width: thin; /* For Firefox */
-  scrollbar-color: #1D70B8 #E8F1F8; /* For Firefox: green thumb, dark track */
-}
-
-/* Custom Scrollbar for Chrome, Safari, and Edge */
-.debug-screen::-webkit-scrollbar {
-  width: 6px;
-}
-
-.debug-screen::-webkit-scrollbar-track {
-  background: #1c1c1e;
-}
-
-.debug-screen::-webkit-scrollbar-thumb {
-  background: #32d74b;
-  border-radius: 10px;
-}
-
-.debug-screen::-webkit-scrollbar-thumb:hover {
-  background: #28a745; /* Slightly darker green on hover */
-}
-
 .thought-entry {
   border-left: 2px solid black;
   padding-left: 10px;
