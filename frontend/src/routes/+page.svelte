@@ -284,8 +284,7 @@ async function handleSendMessage(userText: string) {
   <div class="govuk-inset-text app-conversation-layout__width-restrictor">
     <p class="govuk-body-s"><strong>Debug Triage:</strong> {triageDisplay.active_service}</p>
     <ul class="govuk-list govuk-list--bullet">
-      {#each Object.entries(triageDisplay.collected) as [key, val]}
-        <li>{key}: {val}</li>
+      {#each Object.entries(triageDisplay.collected) as [key, val] (key)}        <li>{key}: {val}</li>
       {/each}
     </ul>
   </div>
