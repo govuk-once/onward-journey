@@ -133,6 +133,6 @@ class hybridAgent(OnwardJourneyAgent, GovUKAgent):
     def _tool_declarations(self):
         """Combine tools from both agents"""
 
-        super()._tool_declartions()
+        super()._tool_declarations()
         
         GovUKAgent._tool_declarations(self)

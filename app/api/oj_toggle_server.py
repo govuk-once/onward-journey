@@ -124,6 +124,7 @@ async def chat_endpoint(request: ChatRequest):
             active_svc = getattr(oja_internal, 'active_service_id', 'Unknown')
             return {
                 "response": response_text,
+                "logs": oja_internal.logs,
                 "debug": {
                     "active_service": active_svc,
                     "triage_state": oja_internal.triage_state,
@@ -133,10 +134,11 @@ async def chat_endpoint(request: ChatRequest):
                 }
             }
     else:
+        base_agent.logs = []
         # Standard GOV.UK flow for general queries
         response_text = await base_agent._send_message_and_tools(request.message)
         
-    return {"response": response_text}
+    return {"response": response_text, "logs": base_agent.logs}
 
 @app.post("/chat/reset")
 async def reset_chat():
