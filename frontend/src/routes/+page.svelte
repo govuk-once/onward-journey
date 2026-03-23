@@ -56,7 +56,6 @@ let chatMessages = $state<Message[]>(data.messages ?? []);
   let isLiveChat = $state(false);
   let socket: WebSocket | null = $state(null);
   let sessionToken = $state("");
-  let handoffProcessed = $state(false);
 
   // --- Actions ---
   function autoScroll(node: HTMLElement) {
@@ -281,6 +280,16 @@ async function handleSendMessage(userText: string) {
         </button>
       </div>
     </div>
+  {#if triageDisplay.active_service !== "None"}
+  <div class="govuk-inset-text app-conversation-layout__width-restrictor">
+    <p class="govuk-body-s"><strong>Debug Triage:</strong> {triageDisplay.active_service}</p>
+    <ul class="govuk-list govuk-list--bullet">
+      {#each Object.entries(triageDisplay.collected) as [key, val]}
+        <li>{key}: {val}</li>
+      {/each}
+    </ul>
+  </div>
+{/if}
   {/if}
 
 <div bind:this={scrollContainer} use:autoScroll class="app-conversation-layout__wrapper app-conversation-layout__width-restrictor">
@@ -302,7 +311,7 @@ async function handleSendMessage(userText: string) {
     </div>
   {/if}
   <div class="app-conversation-layout__fixed-footer app-conversation-layout__width-restrictor">
-  <QuestionForm onSend={handleSendMessage} {isLoading} />
+  <QuestionForm onSend={handleSendMessage} />
   </div>
 <div class="app-conversation-layout__form-region">
   <div class="app-conversation-layout__width-restrictor govuk-!-margin-top-0">
