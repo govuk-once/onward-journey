@@ -208,16 +208,6 @@ async function handleSendMessage(userText: string) {
   chatMessages = [...chatMessages, { message: userText, user: "You", isSelf: true, id: uuid() }];
 
   if (isLiveChat && socket?.readyState === 1) {
-    // Standard Live Chat forwarding 
-    socket.send(JSON.stringify({ action: "onMessage", token: sessionToken, message: { type: "Text", text: userText } }));
-    return;
-  }
-
-async function handleSendMessage(userText: string) {
-  if (!userText.trim() || isLoading) return;
-  chatMessages = [...chatMessages, { message: userText, user: "You", isSelf: true, id: uuid() }];
-
-  if (isLiveChat && socket?.readyState === 1) {
     // Standard Live Chat forwarding [cite: 49]
     socket.send(JSON.stringify({ action: "onMessage", token: sessionToken, message: { type: "Text", text: userText } }));
     return;
