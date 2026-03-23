@@ -383,10 +383,10 @@ class BaseAgent:
 
             if missing_now:
                 self._log_thought(f"HANDOFF_BLOCKED: Information missing for {service_id}: {missing_now}."
-                        f"INSTRUCTION: Ask the user for this missing information using {slot_report.get('follow up')}")
+                        f"INSTRUCTION: Ask the user for this missing information using {slot_report.get('follow_up')}")
                 print(f"[DEBUG - HANDOFF GATE]: BLOCKED! Missing: {missing_now}")
                 return (f"HANDOFF_BLOCKED: Information missing for {service_id}: {missing_now}."
-                        f"INSTRUCTION: Ask the user for this missing information using {slot_report.get('follow up')}")
+                        f"INSTRUCTION: Ask the user for this missing information using {slot_report.get('follow_up')}")
 
             # sync state 
             self.triage_state.update(slot_report.get("extracted"), {})
