@@ -231,8 +231,6 @@ async function handleSendMessage(userText: string) {
     }, 800);
     return;
   }
-
-  // --- Standard logic for when OJA is ON ---
   try {
     const res = await fetch("http://localhost:8000/chat", {
       method: "POST",
@@ -304,7 +302,7 @@ async function handleSendMessage(userText: string) {
     </div>
   {/if}
   <div class="app-conversation-layout__fixed-footer app-conversation-layout__width-restrictor">
-  <QuestionForm onSend={handleSendMessage} />
+  <QuestionForm onSend={handleSendMessage} {isLoading} />
   </div>
 <div class="app-conversation-layout__form-region">
   <div class="app-conversation-layout__width-restrictor govuk-!-margin-top-0">
