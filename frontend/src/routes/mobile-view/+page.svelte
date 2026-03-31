@@ -210,9 +210,6 @@ $effect(() => {
         body: JSON.stringify({ message: userText })
       });
       const result = await res.json();
-      if (result.logs && result.logs.length > 0) {
-  agentThoughts = result.logs;
-}
       if (result.response?.includes("initiate_live_handoff")) {
         const jsonStart = result.response.indexOf('{');
         const jsonEnd = result.response.lastIndexOf('}') + 1;
