@@ -1,62 +1,64 @@
-# Onward Journey
+# Onward Journey Codebase
 
-## Summary
-A prototype for connecting users to further support after a chat session can't produce a satisfactory answer
+This repository contains the **Onward Journey Codebase** for local prototyping.
+The software is object oriented, utilising the core BaseAgent class for all agents. It facilitates orchestration - e.g. message and tool handling. 
 
-## Getting started
+The Onward Journey Agent inherits from the BaseAgent along with capabilities for live chat connections, knowledge based searches and handoffs. It has a "LLM brain" for its decision making/routing on tool use. In particular, the **Amazon Bedrock (Claude 3.7 Sonnet)** model is used for the agent brain. The system is designed to provide grounded, data-backed answers and intelligently manage transitions between automated support and live human agents via **Genesys Cloud**.
 
-### Pre-requisites
+---
 
-This project uses [mise-en-place](https://mise.jdx.dev/getting-started.html) to manage runtime versions
+## 🏗️ Project Architecture
 
-After installing `mise`, you should run `mise activate` from the root of this repo or [set up your shell to automatically activate mise on startup](https://mise.jdx.dev/getting-started.html#activate-mise), then run `mise install`
+The codebase is split into a robust Python backend and a reactive Svelte 5 frontend, integrated through a FastAPI orchestration layer.
 
-You should also install all the tools from the [laptop-configuration repo](https://github.com/govuk-once/laptop-configuration)
+### 1. Backend (Python/FastAPI)
+The backend manages the "brain" of the operation, utilizing a Mixin-based architecture to swap agent capabilities dynamically.
+* **Core Orchestration**: `base.py` and `factory.py` define the logic for specialized agents like the `OnwardJourneyAgent` and `GovUKAgent`.
+* **Data & RAG**: `data.py` implements vector stores using **Amazon Titan Text Embeddings v2** to search local CSVs and Genesys Knowledge Bases.
+* **The Handoff Gate**: A programmatic validator in `base.py` that ensures all mandatory user information is collected before allowing an escalation to a live agent.
+* **Performance**: `engine.py` includes **Cache Augmented Generation (CAG)** to reduce latency and LLM costs via TF-IDF similarity checks.
 
-Install the pre-commit hooks with `pre-commit install`. This will run the hooks listed in `.pre-commit-config.yaml` before each commit
+### 2. Frontend (Svelte 5)
+A modern, reactive interface located in the `/frontend` directory.
+* **Real-time Interaction**: Manages WebSocket connections to Genesys Cloud.
+* **Signal Handling**: Intercepts specific backend signals to trigger UI changes and live chat handoffs.
 
-## Running the application
+---
 
-There are instructions for running the prototype application in [the `app` directory README](app/README.md)
+## 🚀 Key Features
 
-## Deploying infrastructure
+| Feature | Description |
+| :--- | :--- |
+| **Hybrid RAG** | Simultaneously searches internal CSVs, Genesys KBs, and GOV.UK (OpenSearch). |
+| **Multi-Stage Triage** | Uses the LLM as a semantic data extractor to fill required "slots" before escalation. |
+| **Fail-Safe Handoff** | Prevents premature human agent connection if mandatory fields are missing. |
+| **Evaluation Suite** | Includes tools for performance scoring, benchmarking, and topic mapping. |
 
-You need to have the gds cli installed and configured to be able to deploy infrastructure, to the point that `gds aws once-onwardjourney-development-readonly -- echo "test"` succeeds
+---
 
-We use the gds cli to assume roles on our development machines, for a list of relevant roles see `gds aws | grep onwardjourney`. You use one of these roles when working with terraform by running e.g. `gds aws <role-name> -- terraform plan`, or you can run `gds aws <role-name> -- $SHELL` to start a new shell session authenticated as the relevant role
+## 🛠️ Getting Started
 
-You will need to create a configuration file for the terraform backend for each target AWS account. Do this by copying `environments/.example.config` to `environments/<environment name>.config`, and filling in the placeholders
+### Prerequisites
+* AWS Account with access to **Claude 3.7 Sonnet** and **Titan Embeddings**.
+* Python 3.x (with `uv` package manager) and Node.js.
+* A `.env` file configured with OpenSearch and Genesys Cloud credentials (see app README.md for more details)
 
-You will also need to set the environment name in `infrastructure/local.auto.tfvars`:
-```shell
-echo 'environment = "<environment name>" >> local.auto.tfvars'
-```
+### Running the System
+1.  **Backend**: Navigate to the root and run the FastAPI server:
+    ```bash
+    gds-cli aws [your-profile] -- uv run uvicorn app.api.oj_toggle_server:app --reload
+    ```
+2.  **Frontend**: Navigate to `/frontend` and start the development server:
+    ```bash
+    npm install
+    npm run dev
+    ```
 
-You need to initialise the terraform in the `infrastructure/` directory before you can deploy. You will also need to run this when you change what AWS account you are targeting, e.g. from development to staging
-```shell
-# Run within an authenticated session from from `gds aws`
-terraform init -reconfigure -backend-config=environments/<environment name>.config
-```
+---
+The application will be available at http://localhost:5173/.  
+## 🧪 Testing & Evaluation
+The system supports multiple modes of execution via `main.py`:
+* **Interactive Mode**: For real-time conversation demos in terminal.
+* **Testing Mode**: For batch processing pre-defined queries to generate performance reports and confusion matrices.
 
-You can switch workspaces to deploy an entirely different instance, for example to test changes in an isolated environment without affecting the default workspace:
-```shell
-# View existing and selected workspace
-terraform workspace list
-# Create a new workspace
-terraform workspace new foo
-```
-
-To view what changes your terraform code will make:
-```shell
-terraform plan
-```
-
-If you are happy with these changes:
-```shell
-terraform apply
-```
-
-To destroy an environment:
-```shell
-terraform destroy
-```
+---
