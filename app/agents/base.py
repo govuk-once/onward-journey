@@ -421,7 +421,7 @@ class BaseAgent:
 
             if hasattr(self, 'coordinate_service_triage') and not triage_injected:
                 triage_injection = await self.coordinate_service_triage(self.history)
-                if triage_injection and triage_injection != last_triage_log:
+                if triage_injection and triage_injection != last_triage_log and loop_count == 1:
                         self._log_thought(f"TRIAGE UPDATED: {triage_injection}")
                         last_triage_log = triage_injection
                 
@@ -446,6 +446,9 @@ class BaseAgent:
                 print(f"[DEBUG - TOOL CALLS]: {[t['name'] for t in tool_use]}")
                 self._log_thought(f"LLM decided to use tools: {[t['name'] for t in tool_use]}")
             self._add_to_history("assistant", text, tool_calls=tool_use)
+
+            if text and tool_use:
+                self._log_thought(text)
 
             if not tool_use:
                 return text or "I encountered an error."

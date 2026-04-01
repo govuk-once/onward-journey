@@ -18,7 +18,6 @@ import type { Message } from "$lib/types/Message"
     customAttributes?: Record<string, string>;
   }
 
-let agentThoughts = $state<string[]>(["System initialized. Awaiting user input..."]);
 
 let { data }: { data: { messages?: Message[] } } = $props();
 
@@ -34,8 +33,6 @@ $effect(() => {
 let scrollContainer = $state<HTMLElement | undefined>(); // Fixed type syntax
 let socket = $state<WebSocket | null>(null);
 let sessionToken = $state("");
-
-let debugScrollContainer = $state<HTMLElement | undefined>();
 
 let ojaEnabled = $state(false); 
 let isLoading = $state(false);
@@ -54,14 +51,6 @@ $effect(() => {
     }, 50);
     return () => clearTimeout(timer); // Cleanup is good practice
   }
-});
-
-$effect(() => {
-  [scrollContainer, debugScrollContainer].forEach(container => {
-    if (container) {
-      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-    }
-  });
 });
 
   // --- Logic ---
@@ -221,9 +210,6 @@ $effect(() => {
         body: JSON.stringify({ message: userText })
       });
       const result = await res.json();
-      if (result.logs) {
-  agentThoughts = [...agentThoughts, ...result.logs]; 
-}
       if (result.response?.includes("initiate_live_handoff")) {
         const jsonStart = result.response.indexOf('{');
         const jsonEnd = result.response.lastIndexOf('}') + 1;
@@ -241,11 +227,14 @@ $effect(() => {
 
 <div class="workspace">
   <div class="iphone-frame">
-    <div class="status-bar">
-      <span class="time">9:41</span>
-      <div class="status-icons">
-        <img src={rightSideIcon} alt="Signal" class="status-svg" /></div>
-    </div>
+<div class="status-bar">
+  <span class="time">
+    {new Date().getHours()}:{new Date().getMinutes().toString().padStart(2, '0')}
+  </span>
+  <div class="status-icons">
+    <img src={rightSideIcon} alt="Signal" class="status-svg" />
+  </div>
+</div>
 
     <main class="ios-screen">
       <header class="ios-header-group">
@@ -273,7 +262,7 @@ $effect(() => {
           </div>
         </div>
       {/if}
-    </div> </div> </div> ```
+    </div> </div> </div>
 <div class="input-area-blue">
   <div class="input-pill-container"> 
       <div class="input-pill">
@@ -305,31 +294,6 @@ $effect(() => {
       </footer>
     </main>
   </div>
-
-<div class="iphone-frame debug-frame">
-  <div class="status-bar debug-status-top">
-    <span class="time">{new Date().getHours()}:{new Date().getMinutes().toString().padStart(2, '0')}</span>
-  </div>
-
-  <main class="ios-screen debug-screen-container">
-    <header class="ios-header-group debug-header-group">
-      <div class="caspar-header">
-        <p><strong style="color: black;">Agent Logic</strong></p>
-      </div>
-    </header>
-
-    <div class="debug-scroll-area" bind:this={debugScrollContainer}>
-      <div class="debug-log-container">
-          {#each agentThoughts as thought, i (i)}
-            <div class="thought-entry">
-              <span class="timestamp">{new Date().toLocaleTimeString()}</span>
-              <p>{thought}</p>
-            </div>
-          {/each}
-      </div>
-    </div>
-  </main>
-</div>
 
   <aside class="control-panel">
     <div class="glass-card">
@@ -370,6 +334,17 @@ $effect(() => {
   .control-panel { width: 220px; }
   .glass-card { background: white; padding: 20px; border-radius: 16px; border: 1px solid #d1d1d6; }
 
+  .debug-log-container {
+  display: flex;
+  flex-direction: column;
+  /* Add 40px - 60px of padding at the bottom */
+  padding-bottom: 60px; 
+}
+
+.thought-entry:last-child {
+  /* Extra emphasis on the last entry */
+  margin-bottom: 20px;
+}
 
 .input-pill-container {
     display: flex;
@@ -457,61 +432,6 @@ $effect(() => {
     to { transform: translateY(0); }
   }
 
-
-.debug-frame {
-  border-color: #333; /* Darker frame */
-  filter: sepia(0.2); /* Slight tint to distinguish */
-}
-
-.debug-scroll-area {
-  flex: 1;
-  background: #E8F1F8;
-  color: black;
-  font-family: "GDS Transport";
-  padding: 15px; 
-  font-size: 11px; 
-  overflow-y: auto; /* Enables vertical scrolling  */
-  overflow-x: hidden; /* Prevents horizontal scrolling */
-  display: flex;
-  flex-direction: column;
-}
-
-.debug-screen-container {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden; /* Keeps the header fixed while the area below scrolls */
-}
-
-.thought-entry p {
-  margin: 0;
-  padding: 0;
-  white-space: pre-wrap;      /* Preserves line breaks but wraps text naturally */
-  word-wrap: break-word;     /* Legacy support */
-  overflow-wrap: break-word; /* Prevents long strings from breaking the layout */
-  word-break: break-word;    /* Ensures text stays within the container boundaries */
-  max-width: 100%;           /* Constrains width to the parent frame */
-}
-
-/* Update the scrollbar track and thumb as well */
-.debug-scroll-area::-webkit-scrollbar {
-  width: 6px;
-}
-
-.debug-scroll-area::-webkit-scrollbar-track {
-  background: #E8F1F8;
-}
-
-.debug-scroll-area::-webkit-scrollbar-thumb {
-  background: #1D70B8;
-  border-radius: 10px;
-}
-.thought-entry {
-  border-left: 2px solid black;
-  padding-left: 10px;
-  margin-bottom: 12px;
-  animation: fadeIn 0.3s ease-out;
-}
 
 .timestamp {
   color: #888;
